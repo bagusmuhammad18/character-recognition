@@ -18,6 +18,15 @@ from model import Model
 from test import validation
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+from comet_ml import Experiment
+from comet_ml.integration.pytorch import log_model
+
+experiment = Experiment(
+  api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
+  project_name="plate-character-lmdb",
+  workspace="bagusmuhammad18"
+)
+
 
 def train(opt):
     """ dataset preparation """

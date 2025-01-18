@@ -1,0 +1,26 @@
+
+
+#Train
+TPS-ResNet-BiLSTM-Attn:
+python train.py --train_data dataset/ --valid_data dataset/ --select_data "/" --batch_ratio 0.5 --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --batch_size 16 --data_filtering_off --workers 0 --batch_max_length 80 --num_iter 100 --valInterval 5 --saved_model TPS-ResNet-BiLSTM-Attn.pth
+
+TPS-ResNet-BiLSTM-CTC:
+python train.py --train_data dataset/ --valid_data dataset/ --select_data "/" --batch_ratio 0.5 --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction CTC --batch_size 16 --data_filtering_off --workers 0 --batch_max_length 80 --num_iter 200 --valInterval 5 --saved_model TPS-ResNet-BiLSTM-CTC.pth
+
+#Inference
+CUDA_VISIBLE_DEVICES=0 python3 demo.py \
+--Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn \
+--image_folder demo_image/ \
+--saved_model saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111/best_norm_ED.pth
+
+CUDA_VISIBLE_DEVICES=0 python3 demo.py \
+--Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction CTC \
+--image_folder demo_image/ \
+--saved_model saved_models/TPS-ResNet-BiLSTM-CTC-Seed1111/best_norm_ED.pth
+
+
+#run detect_and_recognize.py
+python3 /home/bagus/Proposal/deep-text-recognition-benchmark/detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --image_folder demo_image/ --saved_model saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111/best_norm_ED.pth
+
+python3 /home/bagus/Proposal/deep-text-recognition-benchmark/detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction CTC --image_folder demo_image/ --saved_model saved_models/TPS-ResNet-BiLSTM-CTC-Seed1111/best_norm_ED.pth
+
