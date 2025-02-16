@@ -16,7 +16,7 @@ import time  # Import time module to measure latency
 
 
 # Inisialisasi YOLOv8 Model untuk deteksi plat nomor
-yolo_model_path = '/home/bagus/Proposal/ultralytics/runs/detect/train9/weights/best.pt'
+yolo_model_path = '/home/bagus/Proposal/ultralytics/runs/detect/train14/weights/best.pt'
 model = YOLO(yolo_model_path)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -125,7 +125,7 @@ def main():
 
     # Buka video file
     # video_path = '/home/bagus/Proposal/video_plat5.mp4'
-    video_path = '/home/bagus/Proposal/Footage/12 MEI 2023/10.17.10.1_IP Camera2_10.17.10.1_20230512153255_20230512160204_167816630.mp4'
+    video_path = '/home/bagus/Proposal/video_plat6.mp4'
     cap = cv2.VideoCapture(video_path)  # Ganti ke 0 untuk kamera
 
     # Check if video opened successfully

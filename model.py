@@ -1,26 +1,10 @@
-"""
-Copyright (c) 2019-present NAVER Corp.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
-
+import torch
 import torch.nn as nn
-
+import matplotlib.pyplot as plt
 from modules.transformation import TPS_SpatialTransformerNetwork
 from modules.feature_extraction import VGG_FeatureExtractor, RCNN_FeatureExtractor, ResNet_FeatureExtractor
 from modules.sequence_modeling import BidirectionalLSTM
 from modules.prediction import Attention
-
 
 class Model(nn.Module):
 
@@ -37,7 +21,7 @@ class Model(nn.Module):
         else:
             print('No Transformation module specified')
 
-        """ FeatureExtraction """
+        """ Feature Extraction """
         if opt.FeatureExtraction == 'VGG':
             self.FeatureExtraction = VGG_FeatureExtractor(opt.input_channel, opt.output_channel)
         elif opt.FeatureExtraction == 'RCNN':
@@ -46,10 +30,10 @@ class Model(nn.Module):
             self.FeatureExtraction = ResNet_FeatureExtractor(opt.input_channel, opt.output_channel)
         else:
             raise Exception('No FeatureExtraction module specified')
-        self.FeatureExtraction_output = opt.output_channel  # int(imgH/16-1) * 512
-        self.AdaptiveAvgPool = nn.AdaptiveAvgPool2d((None, 1))  # Transform final (imgH/16-1) -> 1
+        self.FeatureExtraction_output = opt.output_channel
+        self.AdaptiveAvgPool = nn.AdaptiveAvgPool2d((None, 1))
 
-        """ Sequence modeling"""
+        """ Sequence modeling """
         if opt.SequenceModeling == 'BiLSTM':
             self.SequenceModeling = nn.Sequential(
                 BidirectionalLSTM(self.FeatureExtraction_output, opt.hidden_size, opt.hidden_size),
@@ -72,16 +56,23 @@ class Model(nn.Module):
         if not self.stages['Trans'] == "None":
             input = self.Transformation(input)
 
+        """ Preprocessing stage: Konversi ke grayscale """
+        # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
+        if input.size(1) == 3:
+            processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
+        else:
+            processed = input
+
         """ Feature extraction stage """
-        visual_feature = self.FeatureExtraction(input)
-        visual_feature = self.AdaptiveAvgPool(visual_feature.permute(0, 3, 1, 2))  # [b, c, h, w] -> [b, w, c, h]
+        visual_feature = self.FeatureExtraction(processed)
+        visual_feature = self.AdaptiveAvgPool(visual_feature.permute(0, 3, 1, 2))
         visual_feature = visual_feature.squeeze(3)
 
         """ Sequence modeling stage """
         if self.stages['Seq'] == 'BiLSTM':
             contextual_feature = self.SequenceModeling(visual_feature)
         else:
-            contextual_feature = visual_feature  # for convenience. this is NOT contextually modeled by BiLSTM
+            contextual_feature = visual_feature
 
         """ Prediction stage """
         if self.stages['Pred'] == 'CTC':

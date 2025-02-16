@@ -11,6 +11,8 @@ import torch.nn.init as init
 import torch.optim as optim
 import torch.utils.data
 import numpy as np
+import requests
+
 
 from utils import CTCLabelConverter, CTCLabelConverterForBaiduWarpctc, AttnLabelConverter, Averager
 from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
@@ -18,14 +20,30 @@ from model import Model
 from test import validation
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from comet_ml import Experiment
+from comet_ml import start
 from comet_ml.integration.pytorch import log_model
 
-experiment = Experiment(
+experiment = start(
   api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
-  project_name="plate-character-lmdb",
+  project_name="deep-text-recognition-benchmark",
   workspace="bagusmuhammad18"
 )
+
+def send_telegram_notification():
+    bot_token = "7955651832:AAFiwW_eNcCKUE_c0IX-hnbHdzkLWxtEGvw"
+    chat_id = "659469416"
+    message = "✅ Training di VSCode selesai! Cek hasilnya."
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    params = {"chat_id": chat_id, "text": message}
+
+    response = requests.get(url, params=params)
+
+    if response.status_code == 200:
+        print("✅ Telegram berhasil dikirim!")
+    else:
+        print(f"❌ Gagal mengirim Telegram: {response.text}")
+
 
 
 def train(opt):
@@ -180,6 +198,9 @@ def train(opt):
 
         loss_avg.add(cost)
 
+        # Log Train Loss
+        experiment.log_metric("train_loss", loss_avg.val(), step=iteration)
+
         # validation part
         if (iteration + 1) % opt.valInterval == 0 or iteration == 0: # To see training progress, we also conduct validation when 'iteration == 0' 
             elapsed_time = time.time() - start_time
@@ -190,6 +211,11 @@ def train(opt):
                     valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels, infer_time, length_of_data = validation(
                         model, criterion, valid_loader, converter, opt)
                 model.train()
+
+                # Log Valid Loss, Accuracy, and Norm_ED
+                experiment.log_metric("valid_loss", valid_loss, step=iteration)
+                experiment.log_metric("accuracy", current_accuracy, step=iteration)
+                experiment.log_metric("norm_ED", current_norm_ED, step=iteration)
 
                 # training loss and validation loss
                 loss_log = f'[{iteration+1}/{opt.num_iter}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
@@ -230,7 +256,12 @@ def train(opt):
                 model.state_dict(), f'./saved_models/{opt.exp_name}/iter_{iteration+1}.pth')
 
         if (iteration + 1) == opt.num_iter:
-            print('end the training')
+            print("\nTraining Selesai!")
+            print(f"Model terbaik disimpan di: ./saved_models/{opt.exp_name}/best_accuracy.pth dan best_norm_ED.pth")
+            print(f"Log training tersedia di: ./saved_models/{opt.exp_name}/log_train.txt")
+            print(f"Log dataset tersedia di: ./saved_models/{opt.exp_name}/log_dataset.txt")
+            # Kirim notifikasi ke Telegram
+            send_telegram_notification()
             sys.exit()
         iteration += 1
 
@@ -288,9 +319,14 @@ if __name__ == '__main__':
     if not opt.exp_name:
         opt.exp_name = f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
         opt.exp_name += f'-Seed{opt.manualSeed}'
-        # print(opt.exp_name)
+
+    # Tambahkan timestamp atau string acak agar nama folder berbeda setiap kali dijalankan
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%d %b %Y %H:%M")
+    opt.exp_name += f' {timestamp}'
 
     os.makedirs(f'./saved_models/{opt.exp_name}', exist_ok=True)
+
 
     """ vocab / character number configuration """
     if opt.sensitive:
