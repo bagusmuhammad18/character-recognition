@@ -17,7 +17,11 @@ class Model(nn.Module):
         """ Transformation """
         if opt.Transformation == 'TPS':
             self.Transformation = TPS_SpatialTransformerNetwork(
-                F=opt.num_fiducial, I_size=(opt.imgH, opt.imgW), I_r_size=(opt.imgH, opt.imgW), I_channel_num=opt.input_channel)
+                F=opt.num_fiducial, 
+                I_size=(opt.imgH, opt.imgW), 
+                I_r_size=(opt.imgH, opt.imgW), 
+                I_channel_num=opt.input_channel
+            )
         else:
             print('No Transformation module specified')
 
@@ -33,11 +37,12 @@ class Model(nn.Module):
         self.FeatureExtraction_output = opt.output_channel
         self.AdaptiveAvgPool = nn.AdaptiveAvgPool2d((None, 1))
 
-        """ Sequence modeling """
+        """ Sequence Modeling """
         if opt.SequenceModeling == 'BiLSTM':
             self.SequenceModeling = nn.Sequential(
                 BidirectionalLSTM(self.FeatureExtraction_output, opt.hidden_size, opt.hidden_size),
-                BidirectionalLSTM(opt.hidden_size, opt.hidden_size, opt.hidden_size))
+                BidirectionalLSTM(opt.hidden_size, opt.hidden_size, opt.hidden_size)
+            )
             self.SequenceModeling_output = opt.hidden_size
         else:
             print('No SequenceModeling module specified')
@@ -56,12 +61,15 @@ class Model(nn.Module):
         if not self.stages['Trans'] == "None":
             input = self.Transformation(input)
 
-        """ Preprocessing stage: Konversi ke grayscale """
-        # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
-        if input.size(1) == 3:
-            processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
-        else:
-            processed = input
+        # --- Preprocessing stage dinonaktifkan (tidak digunakan) ---
+        # # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
+        # if input.size(1) == 3:
+        #     processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
+        # else:
+        #     processed = input
+
+        # Langsung gunakan input tanpa preprocessing
+        processed = input
 
         """ Feature extraction stage """
         visual_feature = self.FeatureExtraction(processed)
@@ -78,6 +86,11 @@ class Model(nn.Module):
         if self.stages['Pred'] == 'CTC':
             prediction = self.Prediction(contextual_feature.contiguous())
         else:
-            prediction = self.Prediction(contextual_feature.contiguous(), text, is_train, batch_max_length=self.opt.batch_max_length)
+            prediction = self.Prediction(
+                contextual_feature.contiguous(), 
+                text, 
+                is_train, 
+                batch_max_length=self.opt.batch_max_length
+            )
 
         return prediction
