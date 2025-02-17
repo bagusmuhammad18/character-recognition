@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F  # Untuk operasi pooling (morphology)
 import matplotlib.pyplot as plt
 from modules.transformation import TPS_SpatialTransformerNetwork
 from modules.feature_extraction import VGG_FeatureExtractor, RCNN_FeatureExtractor, ResNet_FeatureExtractor
@@ -61,15 +62,33 @@ class Model(nn.Module):
         if not self.stages['Trans'] == "None":
             input = self.Transformation(input)
 
-        # --- Preprocessing stage dinonaktifkan (tidak digunakan) ---
-        # # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
-        # if input.size(1) == 3:
-        #     processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
-        # else:
-        #     processed = input
+        """ Preprocessing stage: Grayscale dan Binarisasi """
+        # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
+        if input.size(1) == 3:
+            processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
+        else:
+            processed = input
+        
+        # Binarisasi: Misal menggunakan threshold 0.6
+        threshold = 0.6
+        processed = (processed > threshold).float()
 
-        # Langsung gunakan input tanpa preprocessing
-        processed = input
+        """ Operasi Morfologi """
+        # Dilation (operasi dilatasi): menggunakan max pooling sebagai operator maksimum
+        dilated = F.max_pool2d(processed, kernel_size=3, stride=1, padding=1)
+        
+        # Erosion (operasi erosi): dapat dihitung dengan memanfaatkan max pooling pada citra invers
+        eroded = 1 - F.max_pool2d(1 - processed, kernel_size=3, stride=1, padding=1)
+        
+        # Opening: erosi diikuti dengan dilasi
+        opened = F.max_pool2d(eroded, kernel_size=3, stride=1, padding=1)
+        
+        # Closing: dilasi diikuti dengan erosi
+        closed = 1 - F.max_pool2d(1 - dilated, kernel_size=3, stride=1, padding=1)
+        
+        # Pilih salah satu hasil operasi morfologi untuk proses selanjutnya.
+        # Misal: menggunakan hasil Opening
+        processed = opened
 
         """ Feature extraction stage """
         visual_feature = self.FeatureExtraction(processed)
