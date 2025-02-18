@@ -1,6 +1,8 @@
 #Create LMDB Dataset
 pip3 install fire
 python3 create_lmdb_dataset.py --inputPath dataset_v1/ --gtFile dataset_v1/train.txt --outputPath result/
+python3 create_lmdb_dataset.py --inputPath dataset_v1/ --gtFile dataset_v1/test.txt --outputPath result/
+python3 create_lmdb_dataset.py --inputPath dataset_v1/ --gtFile dataset_v1/val.txt --outputPath result/
 
 
 #Train
