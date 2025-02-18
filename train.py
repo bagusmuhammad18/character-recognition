@@ -5,6 +5,8 @@ import random
 import string
 import argparse
 
+from comet_ml import start
+from comet_ml.integration.pytorch import log_model
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn.init as init
@@ -20,8 +22,7 @@ from model import Model
 from test import validation
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from comet_ml import start
-from comet_ml.integration.pytorch import log_model
+
 
 experiment = start(
   api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
