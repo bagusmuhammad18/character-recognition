@@ -10,10 +10,7 @@ from torchvision import transforms
 import time
 import numpy as np
 
-# Inisialisasi YOLOv8 Model untuk deteksi plat nomor
-yolo_model_path = '/home/bagus/Proposal/ultralytics/runs/detect/train14/weights/best.pt'
-model = YOLO(yolo_model_path)
-
+# Inisialisasi perangkat (GPU/CPU)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def initialize_ocr_model(opt):
@@ -24,29 +21,45 @@ def initialize_ocr_model(opt):
     ocr_model = Model(opt).to(device)
     ocr_model = torch.nn.DataParallel(ocr_model)
     ocr_model.load_state_dict(torch.load(opt.saved_model, map_location=device))
-    print('OCR model loaded from:', opt.saved_model)
+    print(f'[INFO] OCR model loaded from: {opt.saved_model}')
 
     return ocr_model, converter
 
 def recognize_characters(model, converter, image, opt):
-    """Proses OCR pada gambar plat nomor."""
-    image = Image.fromarray(image).convert('L')
+    """Proses OCR pada gambar plat nomor dengan threshold confidence 90%."""
+    try:
+        # Ubah ke grayscale
+        image = Image.fromarray(image).convert('L')
+        transform = transforms.Compose([
+            transforms.Resize((opt.imgH, opt.imgW)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
 
-    transform = transforms.Compose([
-        transforms.Resize((opt.imgH, opt.imgW), interpolation=2),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
-    ])
-    transformed_image = transform(image).unsqueeze(0).to(device)
+        transformed_image = transform(image).unsqueeze(0).to(device)
 
-    model.eval()
-    with torch.no_grad():
-        text_for_pred = torch.LongTensor(1, opt.batch_max_length + 1).fill_(0).to(device)
-        preds = model(transformed_image, text_for_pred, is_train=False)
-        _, preds_index = preds.max(2)
-        pred_str = converter.decode(preds_index, torch.IntTensor([opt.batch_max_length]))
-        pred = pred_str[0].split('[s]')[0] if 'Attn' in opt.Prediction else pred_str[0]
-    return pred.upper()
+        model.eval()
+        with torch.no_grad():
+            text_for_pred = torch.LongTensor(1, opt.batch_max_length + 1).fill_(0).to(device)
+            preds = model(transformed_image, text_for_pred, is_train=False)
+
+            # Hitung confidence rata-rata dengan softmax
+            probs = torch.nn.functional.softmax(preds, dim=2)
+            max_probs, preds_index = probs.max(2)
+            avg_confidence = max_probs.mean().item()
+
+            pred_str = converter.decode(preds_index, torch.IntTensor([opt.batch_max_length]))
+            pred = pred_str[0].split('[s]')[0] if 'Attn' in opt.Prediction else pred_str[0]
+
+        # Hanya tampilkan jika confidence ≥ 90%
+        if avg_confidence >= 0.9:
+            return pred.upper(), avg_confidence
+        else:
+            return None, avg_confidence
+
+    except Exception as e:
+        print(f'[ERROR] OCR failed: {e}')
+        return None, 0
 
 def main():
     parser = argparse.ArgumentParser()
@@ -64,66 +77,100 @@ def main():
     parser.add_argument('--input_channel', type=int, default=1)
     parser.add_argument('--output_channel', type=int, default=512)
     parser.add_argument('--hidden_size', type=int, default=256)
+    parser.add_argument('--video_path', type=str, default='/home/bagus/Proposal/video_plat3.mp4')
+    parser.add_argument('--yolo_model_path', type=str, default='/home/bagus/Proposal/ultralytics/runs/detect/train14/weights/best.pt')
 
     opt = parser.parse_args()
 
     cudnn.benchmark = True
     opt.num_gpu = torch.cuda.device_count()
 
+    # Inisialisasi model OCR
     ocr_model, converter = initialize_ocr_model(opt)
 
-    # Buka video file
-    video_path = '/home/bagus/Proposal/video_plat6.mp4'
-    cap = cv2.VideoCapture(video_path)
+    # Inisialisasi model YOLO
+    print(f'[INFO] Loading YOLO model from: {opt.yolo_model_path}')
+    yolo_model = YOLO(opt.yolo_model_path).to(device)
 
+    # Buka video file
+    cap = cv2.VideoCapture(opt.video_path)
     if not cap.isOpened():
-        print("Error: Could not open video.")
+        print("[ERROR] Could not open video.")
         return
 
-    while cap.isOpened():
-        start_time = time.time()
+    # Baca frame rate asli video
+    fps_video = cap.get(cv2.CAP_PROP_FPS)
+    delay = int(1000 / fps_video) if fps_video > 0 else 33
 
+    # Penghitungan FPS yang realistis
+    fps_timer = time.time()
+    displayed_frames = 0
+    fps_display = 0
+
+    frame_count = 0
+    last_predicted_plate = ""
+
+    while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Deteksi plat nomor dengan YOLO
-        results = model(frame, imgsz=640, verbose=False)
+        frame_count += 1
+        displayed_frames += 1
 
-        # Lakukan OCR untuk setiap plat yang terdeteksi
-        for result in results[0].boxes.xyxy:
-            x1, y1, x2, y2 = map(int, result)
-            cropped_plate = frame[y1:y2, x1:x2]
+        # Setiap 5 frame, lakukan deteksi dan OCR
+        if frame_count % 5 == 0:
+            results = yolo_model(frame, imgsz=320, verbose=False)
 
-            # OCR pada plat nomor
-            if cropped_plate.size > 0:
-                pred_text = recognize_characters(ocr_model, converter, cropped_plate, opt)
-                print(f'Predicted Plate: {pred_text}')
+            if results and len(results) > 0 and len(results[0].boxes.xyxy) > 0:
+                box = results[0].boxes.xyxy[0]
+                x1, y1, x2, y2 = map(int, box)
+                cropped_plate = frame[y1:y2, x1:x2]
 
-                # Tampilkan teks hasil OCR pada frame
-                cv2.putText(frame, pred_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX,
-                            1, (0, 255, 0), 2, cv2.LINE_AA)
+                if cropped_plate.size > 0:
+                    pred_text, conf = recognize_characters(ocr_model, converter, cropped_plate, opt)
+                    if pred_text:
+                        print(f'[INFO] Predicted Plate: {pred_text} (Confidence: {conf:.2%})')
+                        last_predicted_plate = f"{pred_text} ({conf:.2%})"
 
-        # Hitung FPS sistem
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        system_fps = 1 / elapsed_time if elapsed_time > 0 else 0
+                        # Tampilkan bounding box dan teks
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame, last_predicted_plate, (x1, y1 - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
-        # Tampilkan FPS pada frame
-        cv2.putText(frame, f"FPS: {system_fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                    1, (255, 0, 0), 2)
+        # Tampilkan prediksi plat di pojok kanan atas
+        if last_predicted_plate:
+            text = f"Plate: {last_predicted_plate}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            font_thickness = 2
 
-        # Tampilkan hasil di layar
+            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, font_thickness)
+            x = frame.shape[1] - text_width - 10
+            y = text_height + 10
+            cv2.putText(frame, text, (x, y), font, font_scale, (0, 255, 0), font_thickness, cv2.LINE_AA)
+
+        # Hitung FPS setiap detik
+        current_time = time.time()
+        if current_time - fps_timer >= 1.0:
+            fps_display = displayed_frames / (current_time - fps_timer)
+            displayed_frames = 0
+            fps_timer = current_time
+
+        # Tampilkan FPS di layar
+        cv2.putText(frame, f"FPS: {fps_display:.2f}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+        # Tampilkan frame
         cv2.imshow('YOLOv8 + OCR Inference', frame)
 
-        # Kontrol jalannya video
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
+        # Tunggu sesuai frame rate asli
+        if cv2.waitKey(delay) & 0xFF == ord('q'):
             break
 
     cap.release()
     cv2.destroyAllWindows()
-
+    print("[INFO] Program selesai.")
 
 if __name__ == '__main__':
     main()
