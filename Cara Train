@@ -63,8 +63,4 @@ CUDA_VISIBLE_DEVICES=0 python3 demo.py \
 #run detect_and_recognize.py
 python3 /home/bagus/Proposal/deep-text-recognition-benchmark/detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --image_folder demo_image/ --saved_model saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111/best_norm_ED.pth
 
-python3 /home/bagus/Proposal/deep-text-recognition-benchmark/detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction CTC --image_folder demo_image/ --saved_model saved_models/TPS-ResNet-BiLSTM-CTC-Seed1111/best_norm_ED.pth
-
-
-python3 /home/bagus/Proposal/deep-text-recognition-benchmark/detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --image_folder demo_image/ --saved_model saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111/best_norm_ED.pth
-
+python3 detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --saved_model "saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111 16 Feb 2025 14:54 (preproc grayscale only) (armed_altitude)/best_accuracy.pth"
