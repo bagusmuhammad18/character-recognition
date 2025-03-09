@@ -64,20 +64,19 @@ class Model(nn.Module):
         if not self.stages['Trans'] == "None":
             input = self.Transformation(input)
 
-        """ Preprocessing stage: Grayscale dan Binarisasi dengan Adaptive Thresholding berbasis Local Mean """
-        # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
-        if input.size(1) == 3:
-            processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
-        else:
-            processed = input
+        """ Preprocessing stage: Grayscale dan Binarisasi dengan Adaptive Thresholding berbasis Local Mean (Dikomentari) """
+        # # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
+        # if input.size(1) == 3:
+        #     processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
+        # else:
+        #     processed = input
 
-        # Binarisasi: Gunakan adaptive thresholding berbasis local mean
-        kernel_size = 15  # Ukuran kernel untuk menghitung rata-rata lokal, bisa disesuaikan
-        padding = kernel_size // 2  # Padding agar ukuran output tidak berubah
-        local_mean = F.avg_pool2d(processed, kernel_size, stride=1, padding=padding)  # Hitung rata-rata lokal
-        offset = 0.05  # Offset untuk menyesuaikan threshold, dapat disesuaikan
-        processed = (processed > (local_mean - offset)).float()  # Terapkan thresholding
-
+        # # Binarisasi: Gunakan adaptive thresholding berbasis local mean
+        # kernel_size = 15  # Ukuran kernel untuk menghitung rata-rata lokal, bisa disesuaikan
+        # padding = kernel_size // 2  # Padding agar ukuran output tidak berubah
+        # local_mean = F.avg_pool2d(processed, kernel_size, stride=1, padding=padding)  # Hitung rata-rata lokal
+        # offset = 0.05  # Offset untuk menyesuaikan threshold, dapat disesuaikan
+        # processed = (processed > (local_mean - offset)).float()  # Terapkan thresholding
 
         # # Simpan hasil thresholding (hanya batch pertama untuk efisiensi)
         # if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
@@ -85,7 +84,7 @@ class Model(nn.Module):
         #     plt.imsave(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save, cmap='gray')
         #     self.image_counter += 1
 
-        """ Operasi Morfologi (Jika Diperlukan) """
+        """ Operasi Morfologi (Jika Diperlukan, Dikomentari) """
         # dilated = F.max_pool2d(processed, kernel_size=3, stride=1, padding=1)
         # eroded = 1 - F.max_pool2d(1 - processed, kernel_size=3, stride=1, padding=1)
         # opened = F.max_pool2d(eroded, kernel_size=3, stride=1, padding=1)
@@ -93,7 +92,7 @@ class Model(nn.Module):
         # processed = opened  # Misal: menggunakan hasil operasi opening
 
         """ Feature extraction stage """
-        visual_feature = self.FeatureExtraction(processed)
+        visual_feature = self.FeatureExtraction(input)  # Langsung gunakan input setelah TPS
         visual_feature = self.AdaptiveAvgPool(visual_feature.permute(0, 3, 1, 2))
         visual_feature = visual_feature.squeeze(3)
 
