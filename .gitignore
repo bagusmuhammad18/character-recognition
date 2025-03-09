@@ -12,7 +12,6 @@
 *.eps
 *.pdf
 dataset/
-dataset_v1/
 demo_image/
 threshold/
 
