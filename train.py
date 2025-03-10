@@ -108,10 +108,13 @@ def train(opt):
     model.train()
     if opt.saved_model != '':
         print(f'loading pretrained model from {opt.saved_model}')
+        print(f'Fine-tuning mode: {opt.FT}')
         if opt.FT:
-            model.load_state_dict(torch.load(opt.saved_model), strict=False)
+            state_dict = torch.load(opt.saved_model, weights_only=True)
+            model.load_state_dict(state_dict, strict=False)
         else:
-            model.load_state_dict(torch.load(opt.saved_model))
+            state_dict = torch.load(opt.saved_model, weights_only=True)
+            model.load_state_dict(state_dict)
     print("Model:")
     print(model)
 
