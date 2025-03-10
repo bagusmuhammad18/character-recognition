@@ -16,10 +16,11 @@ class Model(nn.Module):
         self.opt = opt
         self.stages = {'Trans': opt.Transformation, 'Feat': opt.FeatureExtraction,
                        'Seq': opt.SequenceModeling, 'Pred': opt.Prediction}
-        self.image_counter = 0  # Inisialisasi counter untuk menyimpan gambar thresholded
+        self.image_counter = 0  # Counter untuk menyimpan gambar thresholded dan morphology
         
-        # Buat folder threshold jika belum ada
+        # Buat folder threshold dan morphology jika belum ada
         os.makedirs('threshold', exist_ok=True)
+        os.makedirs('morphology', exist_ok=True)
 
         """ Transformation """
         if opt.Transformation == 'TPS':
@@ -86,14 +87,22 @@ class Model(nn.Module):
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
             img_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
             plt.imsave(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save, cmap='gray')
-            self.image_counter += 1
 
-        """ Operasi Morfologi (Dikomentari Sesuai Permintaan) """
+        """ Operasi Morfologi: Opening untuk Pengenalan Karakter Plat Nomor """
+        # Erosi: Menggunakan max pooling pada inversi gambar untuk mengecilkan area putih
+        eroded = 1 - F.max_pool2d(1 - processed, kernel_size=3, stride=1, padding=1)
+        # Dilasi: Menggunakan max pooling untuk mengembalikan ukuran karakter
+        processed = F.max_pool2d(eroded, kernel_size=3, stride=1, padding=1)
+
+        # Simpan hasil operasi morfologi (hanya batch pertama untuk efisiensi)
+        if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
+            img_morph_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
+            plt.imsave(f'morphology/morphology_{self.image_counter:03d}.png', img_morph_to_save, cmap='gray')
+            self.image_counter += 1  # Increment counter setelah menyimpan kedua gambar
+
+        # (Operasi lain tetap dikomentari untuk referensi)
         # dilated = F.max_pool2d(processed, kernel_size=3, stride=1, padding=1)  # Dilasi
-        # eroded = 1 - F.max_pool2d(1 - processed, kernel_size=3, stride=1, padding=1)  # Erosi
-        # opened = F.max_pool2d(eroded, kernel_size=3, stride=1, padding=1)  # Opening
         # closed = 1 - F.max_pool2d(1 - dilated, kernel_size=3, stride=1, padding=1)  # Closing
-        # processed = opened  # Misal: menggunakan hasil operasi opening
 
         """ Feature extraction stage """
         visual_feature = self.FeatureExtraction(processed)  # Gunakan input yang sudah diproses
