@@ -3,10 +3,10 @@
 **/image_release/*
 **/result/*
 # *.mdb
-# *.pth
+*.pth
 *.tar
 *.sh
-*.txt
+# *.txt
 *.ipynb
 *.zip
 *.eps
