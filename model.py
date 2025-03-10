@@ -88,12 +88,15 @@ class Model(nn.Module):
             plt.imsave(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save, cmap='gray')
             self.image_counter += 1
 
-        """ Operasi Morfologi (Dikomentari Sesuai Permintaan) """
+        """ Operasi Morfologi: Opening untuk Pengenalan Karakter Plat Nomor """
+        # Erosi: Menggunakan max pooling pada inversi gambar untuk mengecilkan area putih
+        eroded = 1 - F.max_pool2d(1 - processed, kernel_size=3, stride=1, padding=1)
+        # Dilasi: Menggunakan max pooling untuk mengembalikan ukuran karakter
+        processed = F.max_pool2d(eroded, kernel_size=3, stride=1, padding=1)
+
+        # (Operasi lain tetap dikomentari untuk referensi)
         # dilated = F.max_pool2d(processed, kernel_size=3, stride=1, padding=1)  # Dilasi
-        # eroded = 1 - F.max_pool2d(1 - processed, kernel_size=3, stride=1, padding=1)  # Erosi
-        # opened = F.max_pool2d(eroded, kernel_size=3, stride=1, padding=1)  # Opening
         # closed = 1 - F.max_pool2d(1 - dilated, kernel_size=3, stride=1, padding=1)  # Closing
-        # processed = opened  # Misal: menggunakan hasil operasi opening
 
         """ Feature extraction stage """
         visual_feature = self.FeatureExtraction(processed)  # Gunakan input yang sudah diproses
