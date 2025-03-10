@@ -15,19 +15,17 @@ import torch.utils.data
 import numpy as np
 import requests
 
-
 from utils import CTCLabelConverter, CTCLabelConverterForBaiduWarpctc, AttnLabelConverter, Averager
 from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from model import Model
 from test import validation
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-
 experiment = start(
-  api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
-  project_name="deep-text-recognition-benchmark",
-  workspace="bagusmuhammad18"
+    api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
+    project_name="deep-text-recognition-benchmark",
+    workspace="bagusmuhammad18"
 )
 
 def send_telegram_notification():
@@ -45,14 +43,11 @@ def send_telegram_notification():
     else:
         print(f"❌ Gagal mengirim Telegram: {response.text}")
 
-
-
 def train(opt):
     """ dataset preparation """
     if not opt.data_filtering_off:
         print('Filtering the images containing characters which are not in opt.character')
         print('Filtering the images whose label is longer than opt.batch_max_length')
-        # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
 
     opt.select_data = opt.select_data.split('-')
     opt.batch_ratio = opt.batch_ratio.split('-')
@@ -103,25 +98,25 @@ def train(opt):
                 param.data.fill_(1)
             continue
 
-    # data parallel for multi-GPU
-    model = torch.nn.DataParallel(model).to(device)
-    model.train()
+    # Load pre-trained model before applying DataParallel
     if opt.saved_model != '':
         print(f'loading pretrained model from {opt.saved_model}')
         print(f'Fine-tuning mode: {opt.FT}')
+        state_dict = torch.load(opt.saved_model, weights_only=True)
         if opt.FT:
-            state_dict = torch.load(opt.saved_model, weights_only=True)
             model.load_state_dict(state_dict, strict=False)
         else:
-            state_dict = torch.load(opt.saved_model, weights_only=True)
             model.load_state_dict(state_dict)
+
+    # Apply DataParallel after loading weights
+    model = torch.nn.DataParallel(model).to(device)
+    model.train()
     print("Model:")
     print(model)
 
     """ setup loss """
     if 'CTC' in opt.Prediction:
         if opt.baiduCTC:
-            # need to install warpctc. see our guideline.
             from warpctc_pytorch import CTCLoss 
             criterion = CTCLoss()
         else:
@@ -131,14 +126,13 @@ def train(opt):
     # loss averager
     loss_avg = Averager()
 
-    # filter that only require gradient decent
+    # filter that only require gradient descent
     filtered_parameters = []
     params_num = []
     for p in filter(lambda p: p.requires_grad, model.parameters()):
         filtered_parameters.append(p)
         params_num.append(np.prod(p.size()))
     print('Trainable params num : ', sum(params_num))
-    # [print(name, p.numel()) for name, p in filter(lambda p: p[1].requires_grad, model.named_parameters())]
 
     # setup optimizer
     if opt.adam:
@@ -149,7 +143,6 @@ def train(opt):
     print(optimizer)
 
     """ final options """
-    # print(opt)
     with open(f'./saved_models/{opt.exp_name}/opt.txt', 'a') as opt_file:
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
@@ -189,7 +182,6 @@ def train(opt):
             else:
                 preds = preds.log_softmax(2).permute(1, 0, 2)
                 cost = criterion(preds, text, preds_size, length)
-
         else:
             preds = model(image, text[:, :-1])  # align with Attention.forward
             target = text[:, 1:]  # without [GO] Symbol
@@ -206,9 +198,8 @@ def train(opt):
         experiment.log_metric("train_loss", loss_avg.val(), step=iteration)
 
         # validation part
-        if (iteration + 1) % opt.valInterval == 0 or iteration == 0: # To see training progress, we also conduct validation when 'iteration == 0' 
+        if (iteration + 1) % opt.valInterval == 0 or iteration == 0: 
             elapsed_time = time.time() - start_time
-            # for log
             with open(f'./saved_models/{opt.exp_name}/log_train.txt', 'a') as log:
                 model.eval()
                 with torch.no_grad():
@@ -226,8 +217,6 @@ def train(opt):
                 loss_avg.reset()
 
                 current_model_log = f'{"Current_accuracy":17s}: {current_accuracy:0.3f}, {"Current_norm_ED":17s}: {current_norm_ED:0.2f}'
-
-                # keep best accuracy model (on valid dataset)
                 if current_accuracy > best_accuracy:
                     best_accuracy = current_accuracy
                     torch.save(model.state_dict(), f'./saved_models/{opt.exp_name}/best_accuracy.pth')
@@ -240,7 +229,6 @@ def train(opt):
                 print(loss_model_log)
                 log.write(loss_model_log + '\n')
 
-                # show some predicted results
                 dashed_line = '-' * 80
                 head = f'{"Ground Truth":25s} | {"Prediction":25s} | Confidence Score & T/F'
                 predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
@@ -248,13 +236,11 @@ def train(opt):
                     if 'Attn' in opt.Prediction:
                         gt = gt[:gt.find('[s]')]
                         pred = pred[:pred.find('[s]')]
-
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
                 print(predicted_result_log)
                 log.write(predicted_result_log + '\n')
 
-        # save model per 1e+5 iter.
         if (iteration + 1) % 1e+5 == 0:
             torch.save(
                 model.state_dict(), f'./saved_models/{opt.exp_name}/iter_{iteration+1}.pth')
@@ -264,11 +250,9 @@ def train(opt):
             print(f"Model terbaik disimpan di: ./saved_models/{opt.exp_name}/best_accuracy.pth dan best_norm_ED.pth")
             print(f"Log training tersedia di: ./saved_models/{opt.exp_name}/log_train.txt")
             print(f"Log dataset tersedia di: ./saved_models/{opt.exp_name}/log_dataset.txt")
-            # Kirim notifikasi ke Telegram
             send_telegram_notification()
             sys.exit()
         iteration += 1
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -291,11 +275,11 @@ if __name__ == '__main__':
     parser.add_argument('--baiduCTC', action='store_true', help='for data_filtering_off mode')
     """ Data processing """
     parser.add_argument('--select_data', type=str, default='MJ-ST',
-                        help='select training data (default is MJ-ST, which means MJ and ST used as training data)')
+                        help='select training data (default is MJ-ST)')
     parser.add_argument('--batch_ratio', type=str, default='0.5-0.5',
                         help='assign ratio for each selected data in the batch')
     parser.add_argument('--total_data_usage_ratio', type=str, default='1.0',
-                        help='total data usage ratio, this ratio is multiplied to total number of data.')
+                        help='total data usage ratio')
     parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
     parser.add_argument('--imgH', type=int, default=32, help='the height of the input image')
     parser.add_argument('--imgW', type=int, default=100, help='the width of the input image')
@@ -324,21 +308,17 @@ if __name__ == '__main__':
         opt.exp_name = f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
         opt.exp_name += f'-Seed{opt.manualSeed}'
 
-    # Tambahkan timestamp atau string acak agar nama folder berbeda setiap kali dijalankan
     import datetime
     timestamp = datetime.datetime.now().strftime("%d %b %Y %H:%M")
     opt.exp_name += f' {timestamp}'
 
     os.makedirs(f'./saved_models/{opt.exp_name}', exist_ok=True)
 
-
     """ vocab / character number configuration """
     if opt.sensitive:
-        # opt.character += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
 
     """ Seed and GPU setting """
-    # print("Random Seed: ", opt.manualSeed)
     random.seed(opt.manualSeed)
     np.random.seed(opt.manualSeed)
     torch.manual_seed(opt.manualSeed)
@@ -347,20 +327,10 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     cudnn.deterministic = True
     opt.num_gpu = torch.cuda.device_count()
-    # print('device count', opt.num_gpu)
     if opt.num_gpu > 1:
         print('------ Use multi-GPU setting ------')
         print('if you stuck too long time with multi-GPU setting, try to set --workers 0')
-        # check multi-GPU issue https://github.com/clovaai/deep-text-recognition-benchmark/issues/1
         opt.workers = opt.workers * opt.num_gpu
         opt.batch_size = opt.batch_size * opt.num_gpu
-
-        """ previous version
-        print('To equlize batch stats to 1-GPU setting, the batch_size is multiplied with num_gpu and multiplied batch_size is ', opt.batch_size)
-        opt.batch_size = opt.batch_size * opt.num_gpu
-        print('To equalize the number of epochs to 1-GPU setting, num_iter is divided with num_gpu by default.')
-        If you dont care about it, just commnet out these line.)
-        opt.num_iter = int(opt.num_iter / opt.num_gpu)
-        """
 
     train(opt)
