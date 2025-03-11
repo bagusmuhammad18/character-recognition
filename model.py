@@ -69,12 +69,12 @@ class Model(nn.Module):
         if not self.stages['Trans'] == "None":
             input = self.Transformation(input)
 
-        """ Preprocessing stage: Grayscale dan Binarisasi dengan Adaptive Thresholding berbasis Local Mean (Dikomentari) """
-        # # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
-        # if input.size(1) == 3:  # input shape: (batch_size, channels, height, width)
-        #     processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
-        # else:
-        #     processed = input  # Jika sudah grayscale (1 channel), gunakan langsung
+        """ Preprocessing stage: Grayscale dan Binarisasi dengan Adaptive Thresholding berbasis Local Mean (Dikomentari kecuali Grayscale) """
+        # Jika input memiliki 3 channel (RGB), konversi menjadi grayscale
+        if input.size(1) == 3:  # input shape: (batch_size, channels, height, width)
+            processed = 0.2989 * input[:, 0:1, :, :] + 0.5870 * input[:, 1:2, :, :] + 0.1140 * input[:, 2:3, :, :]
+        else:
+            processed = input  # Jika sudah grayscale (1 channel), gunakan langsung
 
         # # Binarisasi: Gunakan adaptive thresholding berbasis local mean
         # kernel_size = 15  # Ukuran kernel untuk menghitung rata-rata lokal, bisa disesuaikan
@@ -100,12 +100,12 @@ class Model(nn.Module):
         #     plt.imsave(f'morphology/morphology_{self.image_counter:03d}.png', img_morph_to_save, cmap='gray')
         #     self.image_counter += 1  # Increment counter setelah menyimpan kedua gambar
 
-        # (Operasi lain tetap dikomentari untuk referensi)
-        # dilated = F.max_pool2d(processed, kernel_size=3, stride=1, padding=1)  # Dilasi
-        # closed = 1 - F.max_pool2d(1 - dilated, kernel_size=3, stride=1, padding=1)  # Closing
+        # # (Operasi lain tetap dikomentari untuk referensi)
+        # # dilated = F.max_pool2d(processed, kernel_size=3, stride=1, padding=1)  # Dilasi
+        # # closed = 1 - F.max_pool2d(1 - dilated, kernel_size=3, stride=1, padding=1)  # Closing
 
         """ Feature extraction stage """
-        visual_feature = self.FeatureExtraction(input)  # Gunakan input langsung tanpa preprocessing
+        visual_feature = self.FeatureExtraction(processed)  # Gunakan processed setelah grayscale
         visual_feature = self.AdaptiveAvgPool(visual_feature.permute(0, 3, 1, 2))
         visual_feature = visual_feature.squeeze(3)
 
