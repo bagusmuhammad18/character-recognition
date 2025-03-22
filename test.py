@@ -184,6 +184,7 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 idx = i * evaluation_loader.batch_size + j
                 error_type = classify_error(gt_upper, pred_upper)
                 title = f"Ground Truth: {gt_upper} | Predicted: {pred_upper}"
+                # Gunakan idx hanya untuk nama file, bukan judul di gambar
                 mispredicted_images.append((img, f"sample_{idx}_{title}", error_type))
 
             for gt_char, pred_char in zip(gt_upper, pred_upper):
@@ -224,7 +225,8 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 plt.imshow(img_np, cmap='gray')
             else:
                 plt.imshow(img_np)
-            plt.title(title.split('_', 1)[1])  # Hanya tampilkan bagian setelah sample_{idx}
+            # Tampilkan hanya "Ground Truth: ... | Predicted: ..." di gambar
+            plt.title(title.split('_', 1)[1])
             plt.axis('off')
             safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
             image_path = f'{mispredicted_dir}/{safe_title}.png'
@@ -240,7 +242,7 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                     for image_path in image_paths:
                         zipf.write(image_path, os.path.basename(image_path))
                 for image_path in image_paths:
-                    if os.path.exists(image_path):  # Cek apakah file ada sebelum dihapus
+                    if os.path.exists(image_path):
                         os.remove(image_path)
 
     accuracy = n_correct / float(length_of_data) * 100
