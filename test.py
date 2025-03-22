@@ -158,7 +158,6 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
             if pred == gt:
                 n_correct += 1
             else:
-                # Gunakan indeks sebagai pengganti nama file jika path tidak tersedia
                 idx = i * evaluation_loader.batch_size + j
                 mispredicted_images.append((img, f"sample_{idx}->{gt}-{pred}"))
 
@@ -181,27 +180,23 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 confidence_score = 0
             confidence_score_list.append(confidence_score)
 
+    # Simpan gambar yang salah diprediksi sebagai file terpisah
     if mispredicted_images:
-        num_images = len(mispredicted_images)
-        fig, axes = plt.subplots((num_images + 1) // 2, 2, figsize=(15, 5 * ((num_images + 1) // 2)))
-        axes = axes.flatten()
-        
+        os.makedirs(f'./result/{opt.exp_name}/mispredicted', exist_ok=True)
         for idx, (img, title) in enumerate(mispredicted_images):
+            plt.figure(figsize=(5, 2))
             img_np = img.numpy().transpose(1, 2, 0)
             if img_np.shape[2] == 1:  # Grayscale
                 img_np = img_np.squeeze(2)
-                axes[idx].imshow(img_np, cmap='gray')
+                plt.imshow(img_np, cmap='gray')
             else:  # RGB
-                axes[idx].imshow(img_np)
-            axes[idx].set_title(title)
-            axes[idx].axis('off')
-        
-        for idx in range(len(mispredicted_images), len(axes)):
-            axes[idx].axis('off')
-        
-        plt.tight_layout()
-        plt.savefig(f'./result/{opt.exp_name}/mispredicted_images.png')
-        plt.close()
+                plt.imshow(img_np)
+            plt.title(title)
+            plt.axis('off')
+            # Gunakan judul sebagai nama file, ganti karakter yang tidak valid
+            safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
+            plt.savefig(f'./result/{opt.exp_name}/mispredicted/{safe_title}.png', bbox_inches='tight')
+            plt.close()
 
     accuracy = n_correct / float(length_of_data) * 100
     norm_ED = norm_ED / float(length_of_data)
