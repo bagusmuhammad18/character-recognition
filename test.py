@@ -4,6 +4,7 @@ import string
 import argparse
 import re
 import matplotlib.pyplot as plt
+import zipfile
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -180,9 +181,13 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 confidence_score = 0
             confidence_score_list.append(confidence_score)
 
-    # Simpan gambar yang salah diprediksi sebagai file terpisah
+    # Simpan gambar yang salah diprediksi sebagai file terpisah dan buat ZIP
     if mispredicted_images:
-        os.makedirs(f'./result/{opt.exp_name}/mispredicted', exist_ok=True)
+        mispredicted_dir = f'./result/{opt.exp_name}/mispredicted'
+        os.makedirs(mispredicted_dir, exist_ok=True)
+        image_paths = []
+
+        # Simpan gambar individual
         for idx, (img, title) in enumerate(mispredicted_images):
             plt.figure(figsize=(5, 2))
             img_np = img.numpy().transpose(1, 2, 0)
@@ -193,10 +198,21 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 plt.imshow(img_np)
             plt.title(title)
             plt.axis('off')
-            # Gunakan judul sebagai nama file, ganti karakter yang tidak valid
             safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
-            plt.savefig(f'./result/{opt.exp_name}/mispredicted/{safe_title}.png', bbox_inches='tight')
+            image_path = f'{mispredicted_dir}/{safe_title}.png'
+            plt.savefig(image_path, bbox_inches='tight')
             plt.close()
+            image_paths.append(image_path)
+
+        # Buat file ZIP
+        zip_path = f'./result/{opt.exp_name}/mispredicted_images.zip'
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for image_path in image_paths:
+                zipf.write(image_path, os.path.basename(image_path))
+
+        # Opsional: Hapus file individual setelah di-zip
+        for image_path in image_paths:
+            os.remove(image_path)
 
     accuracy = n_correct / float(length_of_data) * 100
     norm_ED = norm_ED / float(length_of_data)
