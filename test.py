@@ -52,7 +52,6 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
         _, accuracy_by_best_model, norm_ED_by_best_model, _, _, _, infer_time, length_of_data, char_stats = validation(
             model, criterion, evaluation_loader, converter, opt, eval_data_dataset)
         
-        # Update character statistics
         for char in char_total:
             char_total[char] += char_stats['total'][char]
             char_correct[char] += char_stats['correct'][char]
@@ -71,7 +70,6 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
     total_accuracy = total_correct_number / total_evaluation_data_number
     params_num = sum([np.prod(p.size()) for p in model.parameters()])
 
-    # Calculate and log per-character accuracy
     char_accuracy = {}
     for char in char_total:
         if char_total[char] > 0:
@@ -102,6 +100,16 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
     char_correct = {c: 0 for c in opt.character.upper() if c.isalnum()}
 
     mispredicted_images = []
+    # Collect all image paths from dataset
+    if dataset is not None:
+        if hasattr(dataset, 'datasets'):  # ConcatDataset case
+            all_image_paths = []
+            for d in dataset.datasets:
+                all_image_paths.extend(d.image_paths)
+        else:
+            all_image_paths = dataset.image_paths
+    else:
+        all_image_paths = None
 
     for i, (image_tensors, labels) in enumerate(evaluation_loader):
         batch_size = image_tensors.size(0)
@@ -160,13 +168,13 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
             if pred == gt:
                 n_correct += 1
             else:
-                # Store mispredicted image with filename, ground truth, and prediction
-                if dataset is not None:
-                    img_path = dataset.image_paths[i * evaluation_loader.batch_size + j]
-                    filename = os.path.basename(img_path)
-                    mispredicted_images.append((img, f"{filename}->{gt}-{pred}"))
+                if all_image_paths is not None:
+                    idx = i * evaluation_loader.batch_size + j
+                    if idx < len(all_image_paths):
+                        img_path = all_image_paths[idx]
+                        filename = os.path.basename(img_path)
+                        mispredicted_images.append((img, f"{filename}->{gt}-{pred}"))
 
-            # Calculate per-character accuracy
             for gt_char, pred_char in zip(gt.upper(), pred.upper()):
                 if gt_char.isalnum() and gt_char in char_total:
                     char_total[gt_char] += 1
@@ -186,7 +194,6 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 confidence_score = 0
             confidence_score_list.append(confidence_score)
 
-    # Display mispredicted images
     if mispredicted_images:
         num_images = len(mispredicted_images)
         fig, axes = plt.subplots((num_images + 1) // 2, 2, figsize=(15, 5 * ((num_images + 1) // 2)))
@@ -202,7 +209,6 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
             axes[idx].set_title(title)
             axes[idx].axis('off')
         
-        # Hide unused subplots
         for idx in range(len(mispredicted_images), len(axes)):
             axes[idx].axis('off')
         
@@ -232,7 +238,8 @@ def test(opt):
     model = torch.nn.DataParallel(model).to(device)
 
     print('loading pretrained model from %s' % opt.saved_model)
-    model.load_state_dict(torch.load(opt.saved_model, map_location=device))
+    # Tambahkan weights_only=True untuk menghindari warning
+    model.load_state_dict(torch.load(opt.saved_model, map_location=device, weights_only=True))
     opt.exp_name = '_'.join(opt.saved_model.split('/')[1:])
 
     os.makedirs(f'./result/{opt.exp_name}', exist_ok=True)
@@ -259,7 +266,6 @@ def test(opt):
             _, accuracy_by_best_model, _, _, _, _, _, _, char_stats = validation(
                 model, criterion, evaluation_loader, converter, opt, eval_data)
             
-            # Log per-character accuracy for single evaluation
             char_accuracy = {}
             for char in char_stats['total']:
                 if char_stats['total'][char] > 0:
