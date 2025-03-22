@@ -36,7 +36,6 @@ def classify_error(gt, pred):
         return "Karakter tambahan"
     
     # Kesalahan format: jika tidak masuk kategori di atas atau urutan sangat berbeda
-    # Kita gunakan edit distance sebagai indikator tambahan
     ed = edit_distance(gt, pred)
     if ed > min(len(gt), len(pred)) // 2:  # Jika lebih dari setengah karakter berbeda
         return "Kesalahan format"
@@ -172,33 +171,39 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 pred = pred[:pred_EOS]
                 pred_max_prob = pred_max_prob[:pred_EOS]
 
+            # Konversi ke uppercase untuk plat nomor Indonesia
+            gt_upper = gt.upper()
+            pred_upper = pred.upper()
+
             if opt.sensitive and opt.data_filtering_off:
-                pred = pred.lower()
-                gt = gt.lower()
+                pred_upper = pred_upper.lower()
+                gt_upper = gt_upper.lower()
                 alphanumeric_case_insensitve = '0123456789abcdefghijklmnopqrstuvwxyz'
                 out_of_alphanumeric_case_insensitve = f'[^{alphanumeric_case_insensitve}]'
-                pred = re.sub(out_of_alphanumeric_case_insensitve, '', pred)
-                gt = re.sub(out_of_alphanumeric_case_insensitve, '', gt)
+                pred_upper = re.sub(out_of_alphanumeric_case_insensitve, '', pred_upper)
+                gt_upper = re.sub(out_of_alphanumeric_case_insensitve, '', gt_upper)
 
-            if pred == gt:
+            if pred_upper == gt_upper:
                 n_correct += 1
             else:
                 idx = i * evaluation_loader.batch_size + j
-                error_type = classify_error(gt, pred)
-                mispredicted_images.append((img, f"sample_{idx}->{gt}-{pred}", error_type))
+                error_type = classify_error(gt_upper, pred_upper)
+                # Ubah format tulisan menjadi "Ground Truth: ... | Predicted: ..."
+                title = f"Ground Truth: {gt_upper} | Predicted: {pred_upper}"
+                mispredicted_images.append((img, title, error_type))
 
-            for gt_char, pred_char in zip(gt.upper(), pred.upper()):
+            for gt_char, pred_char in zip(gt_upper, pred_upper):
                 if gt_char.isalnum() and gt_char in char_total:
                     char_total[gt_char] += 1
                     if gt_char == pred_char:
                         char_correct[gt_char] += 1
 
-            if len(gt) == 0 or len(pred) == 0:
+            if len(gt_upper) == 0 or len(pred_upper) == 0:
                 norm_ED += 0
-            elif len(gt) > len(pred):
-                norm_ED += 1 - edit_distance(pred, gt) / len(gt)
+            elif len(gt_upper) > len(pred_upper):
+                norm_ED += 1 - edit_distance(pred_upper, gt_upper) / len(gt_upper)
             else:
-                norm_ED += 1 - edit_distance(pred, gt) / len(pred)
+                norm_ED += 1 - edit_distance(pred_upper, gt_upper) / len(pred_upper)
 
             try:
                 confidence_score = pred_max_prob.cumprod(dim=0)[-1]
