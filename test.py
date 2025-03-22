@@ -100,16 +100,6 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
     char_correct = {c: 0 for c in opt.character.upper() if c.isalnum()}
 
     mispredicted_images = []
-    # Collect all image paths from dataset
-    if dataset is not None:
-        if hasattr(dataset, 'datasets'):  # ConcatDataset case
-            all_image_paths = []
-            for d in dataset.datasets:
-                all_image_paths.extend(d.image_paths)
-        else:
-            all_image_paths = dataset.image_paths
-    else:
-        all_image_paths = None
 
     for i, (image_tensors, labels) in enumerate(evaluation_loader):
         batch_size = image_tensors.size(0)
@@ -168,12 +158,9 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
             if pred == gt:
                 n_correct += 1
             else:
-                if all_image_paths is not None:
-                    idx = i * evaluation_loader.batch_size + j
-                    if idx < len(all_image_paths):
-                        img_path = all_image_paths[idx]
-                        filename = os.path.basename(img_path)
-                        mispredicted_images.append((img, f"{filename}->{gt}-{pred}"))
+                # Gunakan indeks sebagai pengganti nama file jika path tidak tersedia
+                idx = i * evaluation_loader.batch_size + j
+                mispredicted_images.append((img, f"sample_{idx}->{gt}-{pred}"))
 
             for gt_char, pred_char in zip(gt.upper(), pred.upper()):
                 if gt_char.isalnum() and gt_char in char_total:
@@ -238,7 +225,6 @@ def test(opt):
     model = torch.nn.DataParallel(model).to(device)
 
     print('loading pretrained model from %s' % opt.saved_model)
-    # Tambahkan weights_only=True untuk menghindari warning
     model.load_state_dict(torch.load(opt.saved_model, map_location=device, weights_only=True))
     opt.exp_name = '_'.join(opt.saved_model.split('/')[1:])
 
