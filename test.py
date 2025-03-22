@@ -19,6 +19,30 @@ from model import Model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+def classify_error(gt, pred):
+    """Mengklasifikasikan jenis kesalahan prediksi"""
+    gt = gt.strip()
+    pred = pred.strip()
+    
+    if len(gt) == len(pred):
+        # Substitusi karakter: panjang sama, tapi ada perbedaan karakter
+        if gt != pred:
+            return "Substitusi karakter"
+    elif len(pred) < len(gt):
+        # Karakter hilang: prediksi lebih pendek dari ground truth
+        return "Karakter hilang"
+    elif len(pred) > len(gt):
+        # Karakter tambahan: prediksi lebih panjang dari ground truth
+        return "Karakter tambahan"
+    
+    # Kesalahan format: jika tidak masuk kategori di atas atau urutan sangat berbeda
+    # Kita gunakan edit distance sebagai indikator tambahan
+    ed = edit_distance(gt, pred)
+    if ed > min(len(gt), len(pred)) // 2:  # Jika lebih dari setengah karakter berbeda
+        return "Kesalahan format"
+    
+    return "Tidak diklasifikasikan"  # Default jika tidak ada kategori yang cocok
+
 def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=False):
     eval_data_list = ['IIIT5k_3000', 'SVT', 'IC03_860', 'IC03_867', 'IC13_857',
                       'IC13_1015', 'IC15_1811', 'IC15_2077', 'SVTP', 'CUTE80']
@@ -160,7 +184,8 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 n_correct += 1
             else:
                 idx = i * evaluation_loader.batch_size + j
-                mispredicted_images.append((img, f"sample_{idx}->{gt}-{pred}"))
+                error_type = classify_error(gt, pred)
+                mispredicted_images.append((img, f"sample_{idx}->{gt}-{pred}", error_type))
 
             for gt_char, pred_char in zip(gt.upper(), pred.upper()):
                 if gt_char.isalnum() and gt_char in char_total:
@@ -181,14 +206,20 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
                 confidence_score = 0
             confidence_score_list.append(confidence_score)
 
-    # Simpan gambar yang salah diprediksi sebagai file terpisah dan buat ZIP
+    # Simpan gambar yang salah diprediksi dan buat ZIP berdasarkan kategori
     if mispredicted_images:
         mispredicted_dir = f'./result/{opt.exp_name}/mispredicted'
         os.makedirs(mispredicted_dir, exist_ok=True)
-        image_paths = []
+        error_categories = {
+            "Substitusi karakter": [],
+            "Karakter hilang": [],
+            "Karakter tambahan": [],
+            "Kesalahan format": [],
+            "Tidak diklasifikasikan": []
+        }
 
-        # Simpan gambar individual
-        for idx, (img, title) in enumerate(mispredicted_images):
+        # Simpan gambar individual dan kelompokkan berdasarkan kategori
+        for idx, (img, title, error_type) in enumerate(mispredicted_images):
             plt.figure(figsize=(5, 2))
             img_np = img.numpy().transpose(1, 2, 0)
             if img_np.shape[2] == 1:  # Grayscale
@@ -202,17 +233,19 @@ def validation(model, criterion, evaluation_loader, converter, opt, dataset=None
             image_path = f'{mispredicted_dir}/{safe_title}.png'
             plt.savefig(image_path, bbox_inches='tight')
             plt.close()
-            image_paths.append(image_path)
+            error_categories[error_type].append(image_path)
 
-        # Buat file ZIP
-        zip_path = f'./result/{opt.exp_name}/mispredicted_images.zip'
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for image_path in image_paths:
-                zipf.write(image_path, os.path.basename(image_path))
-
-        # Opsional: Hapus file individual setelah di-zip
-        for image_path in image_paths:
-            os.remove(image_path)
+        # Buat file ZIP untuk setiap kategori
+        for category, image_paths in error_categories.items():
+            if image_paths:  # Hanya buat ZIP jika ada gambar dalam kategori
+                safe_category = re.sub(r'[<>:"/\\|?*]', '_', category)
+                zip_path = f'./result/{opt.exp_name}/{safe_category}.zip'
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for image_path in image_paths:
+                        zipf.write(image_path, os.path.basename(image_path))
+                # Hapus file individual setelah di-zip
+                for image_path in image_paths:
+                    os.remove(image_path)
 
     accuracy = n_correct / float(length_of_data) * 100
     norm_ED = norm_ED / float(length_of_data)
