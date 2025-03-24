@@ -1,8 +1,9 @@
 #Create LMDB Dataset
 pip3 install fire
-python3 create_lmdb_dataset.py --inputPath dataset_v2/ --gtFile dataset_v2/train.txt --outputPath result/
-python3 create_lmdb_dataset.py --inputPath dataset_v2/ --gtFile dataset_v2/test.txt --outputPath result/
-python3 create_lmdb_dataset.py --inputPath dataset_v2/ --gtFile dataset_v2/val.txt --outputPath result/
+python3 create_lmdb_dataset.py --inputPath "dataset_v2 (mbak gina+kaggle)/" --gtFile "dataset_v2 (mbak gina+kaggle)/train.txt" --outputPath "result/"
+python3 create_lmdb_dataset.py --inputPath "dataset_v2 (mbak gina+kaggle)/" --gtFile "dataset_v2 (mbak gina+kaggle)/test.txt" --outputPath "result/"
+python3 create_lmdb_dataset.py --inputPath "dataset_v2 (mbak gina+kaggle)/" --gtFile "dataset_v2 (mbak gina+kaggle)/val.txt" --outputPath "result/"
+
 
 
 #Train
@@ -63,4 +64,4 @@ CUDA_VISIBLE_DEVICES=0 python3 demo.py \
 #run detect_and_recognize.py
 python3 /home/bagus/Proposal/deep-text-recognition-benchmark/detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --image_folder demo_image/ --saved_model saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111/best_norm_ED.pth
 
-python3 detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --saved_model "saved_models/TPS-ResNet-BiLSTM-Attn-Seed1111 16 Feb 2025 14:54 (preproc grayscale only) (armed_altitude)/best_accuracy.pth"
+python3 detect_and_recognize.py --Transformation TPS --FeatureExtraction ResNet --SequenceModeling BiLSTM --Prediction Attn --saved_model "Hasil Training/grayscale/best_accuracy.pth"
