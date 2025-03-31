@@ -77,7 +77,7 @@ def main():
     parser.add_argument('--input_channel', type=int, default=1)
     parser.add_argument('--output_channel', type=int, default=512)
     parser.add_argument('--hidden_size', type=int, default=256)
-    parser.add_argument('--video_path', type=str, default='/home/bagus/Proposal/C002_resized.mp4')
+    parser.add_argument('--video_path', type=str, default='/home/bagus/Proposal/video_plat3.mp4')
     parser.add_argument('--yolo_model_path', type=str, default='/home/bagus/Proposal/ultralytics/runs/detect/train14/weights/best.pt')
 
     opt = parser.parse_args()
@@ -109,42 +109,34 @@ def main():
 
     frame_count = 0
     last_predicted_plate = ""
-    paused = False
 
     while cap.isOpened():
-        if not paused:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-            frame_count += 1
-            displayed_frames += 1
+        frame_count += 1
+        displayed_frames += 1
 
-            # Setiap 5 frame, lakukan deteksi dan OCR jika y1 > 340
-            if frame_count % 5 == 0:
-                results = yolo_model(frame, imgsz=640, verbose=False)
+        # Setiap 5 frame, lakukan deteksi dan OCR
+        if frame_count % 5 == 0:
+            results = yolo_model(frame, imgsz=320, verbose=False)
 
-                if results and len(results) > 0 and len(results[0].boxes.xyxy) > 0:
-                    box = results[0].boxes.xyxy[0]
-                    x1, y1, x2, y2 = map(int, box)
+            if results and len(results) > 0 and len(results[0].boxes.xyxy) > 0:
+                box = results[0].boxes.xyxy[0]
+                x1, y1, x2, y2 = map(int, box)
+                cropped_plate = frame[y1:y2, x1:x2]
 
-                    # Hanya deteksi jika y1 > 340
-                    if y1 > 340:
-                        cropped_plate = frame[y1:y2, x1:x2]
+                if cropped_plate.size > 0:
+                    pred_text, conf = recognize_characters(ocr_model, converter, cropped_plate, opt)
+                    if pred_text:
+                        print(f'[INFO] Predicted Plate: {pred_text} (Confidence: {conf:.2%})')
+                        last_predicted_plate = f"{pred_text} ({conf:.2%})"
 
-                        if cropped_plate.size > 0:
-                            pred_text, conf = recognize_characters(ocr_model, converter, cropped_plate, opt)
-                            if pred_text:
-                                print(f'[INFO] Predicted Plate: {pred_text} (Confidence: {conf:.2%})')
-                                last_predicted_plate = f"{pred_text} ({conf:.2%})"
-
-                                # Tampilkan bounding box dan teks
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                                cv2.putText(frame, last_predicted_plate, (x1, y1 - 10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
-                                # Pause setelah prediksi berhasil
-                                paused = True
+                        # Tampilkan bounding box dan teks
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame, last_predicted_plate, (x1, y1 - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
         # Tampilkan prediksi plat di pojok kanan atas
         if last_predicted_plate:
@@ -158,13 +150,12 @@ def main():
             y = text_height + 10
             cv2.putText(frame, text, (x, y), font, font_scale, (0, 255, 0), font_thickness, cv2.LINE_AA)
 
-        # Hitung FPS setiap detik (hanya saat tidak pause)
-        if not paused:
-            current_time = time.time()
-            if current_time - fps_timer >= 1.0:
-                fps_display = displayed_frames / (current_time - fps_timer)
-                displayed_frames = 0
-                fps_timer = current_time
+        # Hitung FPS setiap detik
+        current_time = time.time()
+        if current_time - fps_timer >= 1.0:
+            fps_display = displayed_frames / (current_time - fps_timer)
+            displayed_frames = 0
+            fps_timer = current_time
 
         # Tampilkan FPS di layar
         cv2.putText(frame, f"FPS: {fps_display:.2f}", (10, 30),
@@ -173,12 +164,9 @@ def main():
         # Tampilkan frame
         cv2.imshow('YOLOv8 + OCR Inference', frame)
 
-        # Kontrol pause dan unpause
-        key = cv2.waitKey(1 if not paused else 0) & 0xFF
-        if key == ord('q'):  # Keluar dengan 'q'
+        # Tunggu sesuai frame rate asli
+        if cv2.waitKey(delay) & 0xFF == ord('q'):
             break
-        elif key == ord(' '):  # Unpause dengan Space
-            paused = False
 
     cap.release()
     cv2.destroyAllWindows()
