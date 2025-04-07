@@ -15,19 +15,17 @@ import torch.utils.data
 import numpy as np
 import requests
 
-
 from utils import CTCLabelConverter, CTCLabelConverterForBaiduWarpctc, AttnLabelConverter, Averager
 from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from model import Model
 from test import validation
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-
 experiment = start(
-  api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
-  project_name="deep-text-recognition-benchmark",
-  workspace="bagusmuhammad18"
+    api_key="FJmNVYsN9paPzdYWP5JNiPu9q",
+    project_name="deep-text-recognition-benchmark",
+    workspace="bagusmuhammad18"
 )
 
 def send_telegram_notification():
@@ -45,14 +43,11 @@ def send_telegram_notification():
     else:
         print(f"❌ Gagal mengirim Telegram: {response.text}")
 
-
-
 def train(opt):
     """ dataset preparation """
     if not opt.data_filtering_off:
         print('Filtering the images containing characters which are not in opt.character')
         print('Filtering the images whose label is longer than opt.batch_max_length')
-        # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
 
     opt.select_data = opt.select_data.split('-')
     opt.batch_ratio = opt.batch_ratio.split('-')
@@ -63,7 +58,7 @@ def train(opt):
     valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=opt.batch_size,
-        shuffle=True,  # 'True' to check training progress with validation function.
+        shuffle=True,
         num_workers=int(opt.workers),
         collate_fn=AlignCollate_valid, pin_memory=True)
     log.write(valid_dataset_log)
@@ -98,7 +93,7 @@ def train(opt):
                 init.constant_(param, 0.0)
             elif 'weight' in name:
                 init.kaiming_normal_(param)
-        except Exception as e:  # for batchnorm.
+        except Exception as e:  # for batchnorm
             if 'weight' in name:
                 param.data.fill_(1)
             continue
@@ -118,24 +113,21 @@ def train(opt):
     """ setup loss """
     if 'CTC' in opt.Prediction:
         if opt.baiduCTC:
-            # need to install warpctc. see our guideline.
             from warpctc_pytorch import CTCLoss 
             criterion = CTCLoss()
         else:
             criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
     else:
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
-    # loss averager
     loss_avg = Averager()
 
-    # filter that only require gradient decent
+    # filter that only require gradient descent
     filtered_parameters = []
     params_num = []
     for p in filter(lambda p: p.requires_grad, model.parameters()):
         filtered_parameters.append(p)
         params_num.append(np.prod(p.size()))
     print('Trainable params num : ', sum(params_num))
-    # [print(name, p.numel()) for name, p in filter(lambda p: p[1].requires_grad, model.named_parameters())]
 
     # setup optimizer
     if opt.adam:
@@ -146,7 +138,6 @@ def train(opt):
     print(optimizer)
 
     """ final options """
-    # print(opt)
     with open(f'./saved_models/{opt.exp_name}/opt.txt', 'a') as opt_file:
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
@@ -170,7 +161,7 @@ def train(opt):
     best_norm_ED = -1
     iteration = start_iter
 
-    while(True):
+    while True:
         # train part
         image_tensors, labels = train_dataset.get_batch()
         image = image_tensors.to(device)
@@ -186,7 +177,6 @@ def train(opt):
             else:
                 preds = preds.log_softmax(2).permute(1, 0, 2)
                 cost = criterion(preds, text, preds_size, length)
-
         else:
             preds = model(image, text[:, :-1])  # align with Attention.forward
             target = text[:, 1:]  # without [GO] Symbol
@@ -194,7 +184,7 @@ def train(opt):
 
         model.zero_grad()
         cost.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)  # gradient clipping with 5 (Default)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)
         optimizer.step()
 
         loss_avg.add(cost)
@@ -203,17 +193,17 @@ def train(opt):
         experiment.log_metric("train_loss", loss_avg.val(), step=iteration)
 
         # validation part
-        if (iteration + 1) % opt.valInterval == 0 or iteration == 0: # To see training progress, we also conduct validation when 'iteration == 0' 
+        if (iteration + 1) % opt.valInterval == 0 or iteration == 0:
             elapsed_time = time.time() - start_time
-            # for log
             with open(f'./saved_models/{opt.exp_name}/log_train.txt', 'a') as log:
                 model.eval()
                 with torch.no_grad():
-                    valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels, infer_time, length_of_data = validation(
+                    # Sesuaikan dengan 9 nilai yang dikembalikan oleh validation
+                    valid_loss, current_accuracy, current_norm_ED, preds, confidence_score, labels, infer_time, length_of_data, char_stats = validation(
                         model, criterion, valid_loader, converter, opt)
                 model.train()
 
-                # Log Valid Loss, Accuracy, and Norm_ED
+                # Log Valid Loss, Accuracy, dan Norm_ED
                 experiment.log_metric("valid_loss", valid_loss, step=iteration)
                 experiment.log_metric("accuracy", current_accuracy, step=iteration)
                 experiment.log_metric("norm_ED", current_norm_ED, step=iteration)
@@ -245,13 +235,12 @@ def train(opt):
                     if 'Attn' in opt.Prediction:
                         gt = gt[:gt.find('[s]')]
                         pred = pred[:pred.find('[s]')]
-
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
                 print(predicted_result_log)
                 log.write(predicted_result_log + '\n')
 
-        # save model per 1e+5 iter.
+        # save model per 1e+5 iter
         if (iteration + 1) % 1e+5 == 0:
             torch.save(
                 model.state_dict(), f'./saved_models/{opt.exp_name}/iter_{iteration+1}.pth')
@@ -261,11 +250,9 @@ def train(opt):
             print(f"Model terbaik disimpan di: ./saved_models/{opt.exp_name}/best_accuracy.pth dan best_norm_ED.pth")
             print(f"Log training tersedia di: ./saved_models/{opt.exp_name}/log_train.txt")
             print(f"Log dataset tersedia di: ./saved_models/{opt.exp_name}/log_dataset.txt")
-            # Kirim notifikasi ke Telegram
             send_telegram_notification()
             sys.exit()
         iteration += 1
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -286,7 +273,7 @@ if __name__ == '__main__':
     parser.add_argument('--eps', type=float, default=1e-8, help='eps for Adadelta. default=1e-8')
     parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping value. default=5')
     parser.add_argument('--baiduCTC', action='store_true', help='for data_filtering_off mode')
-    """ Data processing """
+    # Data processing
     parser.add_argument('--select_data', type=str, default='MJ-ST',
                         help='select training data (default is MJ-ST, which means MJ and ST used as training data)')
     parser.add_argument('--batch_ratio', type=str, default='0.5-0.5',
@@ -302,7 +289,7 @@ if __name__ == '__main__':
     parser.add_argument('--sensitive', action='store_true', help='for sensitive character mode')
     parser.add_argument('--PAD', action='store_true', help='whether to keep ratio then pad for image resize')
     parser.add_argument('--data_filtering_off', action='store_true', help='for data_filtering_off mode')
-    """ Model Architecture """
+    # Model Architecture
     parser.add_argument('--Transformation', type=str, required=True, help='Transformation stage. None|TPS')
     parser.add_argument('--FeatureExtraction', type=str, required=True,
                         help='FeatureExtraction stage. VGG|RCNN|ResNet')
@@ -321,21 +308,18 @@ if __name__ == '__main__':
         opt.exp_name = f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
         opt.exp_name += f'-Seed{opt.manualSeed}'
 
-    # Tambahkan timestamp atau string acak agar nama folder berbeda setiap kali dijalankan
+    # Tambahkan timestamp untuk nama folder unik
     import datetime
     timestamp = datetime.datetime.now().strftime("%d %b %Y %H:%M")
     opt.exp_name += f' {timestamp}'
 
     os.makedirs(f'./saved_models/{opt.exp_name}', exist_ok=True)
 
-
     """ vocab / character number configuration """
     if opt.sensitive:
-        # opt.character += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char)
 
     """ Seed and GPU setting """
-    # print("Random Seed: ", opt.manualSeed)
     random.seed(opt.manualSeed)
     np.random.seed(opt.manualSeed)
     torch.manual_seed(opt.manualSeed)
@@ -344,20 +328,11 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     cudnn.deterministic = True
     opt.num_gpu = torch.cuda.device_count()
-    # print('device count', opt.num_gpu)
+
     if opt.num_gpu > 1:
         print('------ Use multi-GPU setting ------')
         print('if you stuck too long time with multi-GPU setting, try to set --workers 0')
-        # check multi-GPU issue https://github.com/clovaai/deep-text-recognition-benchmark/issues/1
         opt.workers = opt.workers * opt.num_gpu
         opt.batch_size = opt.batch_size * opt.num_gpu
-
-        """ previous version
-        print('To equlize batch stats to 1-GPU setting, the batch_size is multiplied with num_gpu and multiplied batch_size is ', opt.batch_size)
-        opt.batch_size = opt.batch_size * opt.num_gpu
-        print('To equalize the number of epochs to 1-GPU setting, num_iter is divided with num_gpu by default.')
-        If you dont care about it, just commnet out these line.)
-        opt.num_iter = int(opt.num_iter / opt.num_gpu)
-        """
 
     train(opt)
