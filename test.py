@@ -3,14 +3,15 @@ import time
 import string
 import argparse
 import re
-from PIL import Image, ImageDraw, ImageFont
+import matplotlib.pyplot as plt
+import zipfile
+
 import torch
 import torch.backends.cudnn as cudnn
 import torch.utils.data
 import torch.nn.functional as F
 import numpy as np
 from nltk.metrics.distance import edit_distance
-import editdistance
 
 from utils import CTCLabelConverter, AttnLabelConverter, Averager
 from dataset import hierarchical_dataset, AlignCollate
@@ -18,67 +19,107 @@ from model import Model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def calculate_error_types(gt, pred):
-    """Calculate substitution, insertion, and deletion errors between ground truth and prediction."""
-    edit_ops = editdistance.eval(gt, pred, return_ops=True)[1]
+def classify_error(gt, pred):
+    """Mengklasifikasikan jenis kesalahan prediksi"""
+    gt = gt.strip()
+    pred = pred.strip()
     
-    substitutions = 0
-    insertions = 0
-    deletions = 0
+    if len(gt) == len(pred):
+        if gt != pred:
+            return "Substitusi karakter"
+    elif len(pred) < len(gt):
+        return "Karakter hilang"
+    elif len(pred) > len(gt):
+        return "Karakter tambahan"
     
-    for op, _, _ in edit_ops:
-        if op == 'replace':
-            substitutions += 1
-        elif op == 'insert':
-            insertions += 1
-        elif op == 'delete':
-            deletions += 1
-            
-    return substitutions, insertions, deletions
+    ed = edit_distance(gt, pred)
+    if ed > min(len(gt), len(pred)) // 2:
+        return "Kesalahan format"
+    
+    return "Tidak diklasifikasikan"
 
-def save_error_image(image, gt, pred, error_type, save_dir, idx):
-    """Save image with ground truth and predicted text annotated."""
-    os.makedirs(save_dir, exist_ok=True)
-    
-    if isinstance(image, torch.Tensor):
-        image = image.cpu().numpy().squeeze()
-        if image.ndim == 3:  # If RGB
-            image = image.transpose(1, 2, 0)
-        image = (image * 255).astype(np.uint8)
-        img = Image.fromarray(image)
+def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=False):
+    eval_data_list = ['IIIT5k_3000', 'SVT', 'IC03_860', 'IC03_867', 'IC13_857',
+                      'IC13_1015', 'IC15_1811', 'IC15_2077', 'SVTP', 'CUTE80']
+
+    if calculate_infer_time:
+        evaluation_batch_size = 1
     else:
-        img = image
-    
-    img_copy = img.copy()
-    draw = ImageDraw.Draw(img_copy)
-    
-    try:
-        font = ImageFont.truetype("arial.ttf", 15)
-    except:
-        font = ImageFont.load_default()
-    
-    draw.text((5, 5), f"GT: {gt}", fill=(255, 0, 0), font=font)
-    draw.text((5, 25), f"Pred: {pred}", fill=(0, 255, 0), font=font)
-    
-    img_path = os.path.join(save_dir, f"{error_type}_{idx}.png")
-    img_copy.save(img_path)
+        evaluation_batch_size = opt.batch_size
 
-def validation(model, criterion, evaluation_loader, converter, opt):
-    """Validation or evaluation with error type analysis."""
+    list_accuracy = []
+    total_forward_time = 0
+    total_evaluation_data_number = 0
+    total_correct_number = 0
+    char_total = {c: 0 for c in opt.character.upper() if c.isalnum()}
+    char_correct = {c: 0 for c in opt.character.upper() if c.isalnum()}
+
+    log = open(f'./result/{opt.exp_name}/log_all_evaluation.txt', 'a')
+    dashed_line = '-' * 80
+    print(dashed_line)
+    log.write(dashed_line + '\n')
+    
+    for eval_data in eval_data_list:
+        eval_data_path = os.path.join(opt.eval_data, eval_data)
+        AlignCollate_evaluation = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD)
+        eval_data_dataset, eval_data_log = hierarchical_dataset(root=eval_data_path, opt=opt)
+        evaluation_loader = torch.utils.data.DataLoader(
+            eval_data_dataset, batch_size=evaluation_batch_size,
+            shuffle=False,
+            num_workers=int(opt.workers),
+            collate_fn=AlignCollate_evaluation, pin_memory=True)
+
+        _, accuracy_by_best_model, norm_ED_by_best_model, _, _, _, infer_time, length_of_data, char_stats = validation(
+            model, criterion, evaluation_loader, converter, opt, eval_data_dataset)
+        
+        for char in char_total:
+            char_total[char] += char_stats['total'][char]
+            char_correct[char] += char_stats['correct'][char]
+
+        list_accuracy.append(f'{accuracy_by_best_model:0.3f}')
+        total_forward_time += infer_time
+        total_evaluation_data_number += len(eval_data)
+        total_correct_number += accuracy_by_best_model * length_of_data
+        log.write(eval_data_log)
+        print(f'Acc {accuracy_by_best_model:0.3f}\t normalized_ED {norm_ED_by_best_model:0.3f}')
+        log.write(f'Acc {accuracy_by_best_model:0.3f}\t normalized_ED {norm_ED_by_best_model:0.3f}\n')
+        print(dashed_line)
+        log.write(dashed_line + '\n')
+
+    averaged_forward_time = total_forward_time / total_evaluation_data_number * 1000
+    total_accuracy = total_correct_number / total_evaluation_data_number
+    params_num = sum([np.prod(p.size()) for p in model.parameters()])
+
+    char_accuracy = {}
+    for char in char_total:
+        if char_total[char] > 0:
+            char_accuracy[char] = char_correct[char] / char_total[char] * 100
+
+    evaluation_log = 'accuracy: '
+    for name, accuracy in zip(eval_data_list, list_accuracy):
+        evaluation_log += f'{name}: {accuracy}\t'
+    evaluation_log += f'total_accuracy: {total_accuracy:0.3f}\t'
+    evaluation_log += f'averaged_infer_time: {averaged_forward_time:0.3f}\t# parameters: {params_num/1e6:0.3f}\n'
+    evaluation_log += 'Per-character accuracy:\n'
+    for char in sorted(char_accuracy.keys()):
+        evaluation_log += f'{char}: {char_accuracy[char]:0.2f}% ({char_correct[char]}/{char_total[char]})\n'
+
+    print(evaluation_log)
+    log.write(evaluation_log + '\n')
+    log.close()
+
+    return None
+
+def validation(model, criterion, evaluation_loader, converter, opt, dataset=None):
     n_correct = 0
     norm_ED = 0
     length_of_data = 0
     infer_time = 0
     valid_loss_avg = Averager()
-    
-    total_substitutions = 0
-    total_insertions = 0
-    total_deletions = 0
-    
-    base_save_dir = f'./result/{opt.exp_name}/error_images'
-    sub_dir = os.path.join(base_save_dir, 'substitutions')
-    ins_dir = os.path.join(base_save_dir, 'insertions')
-    del_dir = os.path.join(base_save_dir, 'deletions')
+    char_total = {c: 0 for c in opt.character.upper() if c.isalnum()}
+    char_correct = {c: 0 for c in opt.character.upper() if c.isalnum()}
+
+    mispredicted_images = []
 
     for i, (image_tensors, labels) in enumerate(evaluation_loader):
         batch_size = image_tensors.size(0)
@@ -96,12 +137,10 @@ def validation(model, criterion, evaluation_loader, converter, opt):
             preds_size = torch.IntTensor([preds.size(1)] * batch_size)
             if opt.baiduCTC:
                 cost = criterion(preds.permute(1, 0, 2), text_for_loss, preds_size, length_for_loss) / batch_size
-            else:
-                cost = criterion(preds.log_softmax(2).permute(1, 0, 2), text_for_loss, preds_size, length_for_loss)
-            if opt.baiduCTC:
                 _, preds_index = preds.max(2)
                 preds_index = preds_index.view(-1)
             else:
+                cost = criterion(preds.log_softmax(2).permute(1, 0, 2), text_for_loss, preds_size, length_for_loss)
                 _, preds_index = preds.max(2)
             preds_str = converter.decode(preds_index.data, preds_size.data)
         else:
@@ -117,58 +156,102 @@ def validation(model, criterion, evaluation_loader, converter, opt):
         infer_time += forward_time
         valid_loss_avg.add(cost)
 
-        for idx, (gt, pred, img_tensor) in enumerate(zip(labels, preds_str, image_tensors)):
+        preds_prob = F.softmax(preds, dim=2)
+        preds_max_prob, _ = preds_prob.max(dim=2)
+        confidence_score_list = []
+
+        for j, (gt, pred, pred_max_prob, img) in enumerate(zip(labels, preds_str, preds_max_prob, image_tensors)):
             if 'Attn' in opt.Prediction:
                 gt = gt[:gt.find('[s]')]
                 pred_EOS = pred.find('[s]')
                 pred = pred[:pred_EOS]
+                pred_max_prob = pred_max_prob[:pred_EOS]
+
+            gt_upper = gt.upper()
+            pred_upper = pred.upper()
 
             if opt.sensitive and opt.data_filtering_off:
-                pred = pred.lower()
-                gt = gt.lower()
+                pred_upper = pred_upper.lower()
+                gt_upper = gt_upper.lower()
                 alphanumeric_case_insensitve = '0123456789abcdefghijklmnopqrstuvwxyz'
                 out_of_alphanumeric_case_insensitve = f'[^{alphanumeric_case_insensitve}]'
-                pred = re.sub(out_of_alphanumeric_case_insensitve, '', pred)
-                gt = re.sub(out_of_alphanumeric_case_insensitve, '', gt)
+                pred_upper = re.sub(out_of_alphanumeric_case_insensitve, '', pred_upper)
+                gt_upper = re.sub(out_of_alphanumeric_case_insensitve, '', gt_upper)
 
-            if pred == gt:
+            if pred_upper == gt_upper:
                 n_correct += 1
             else:
-                subs, ins, dels = calculate_error_types(gt, pred)
-                total_substitutions += subs
-                total_insertions += ins
-                total_deletions += dels
+                idx = i * evaluation_loader.batch_size + j
+                error_type = classify_error(gt_upper, pred_upper)
+                title = f"Ground Truth: {gt_upper} | Predicted: {pred_upper}"
+                # Gunakan idx hanya untuk nama file, bukan judul di gambar
+                mispredicted_images.append((img, f"sample_{idx}_{title}", error_type))
 
-                if subs > 0:
-                    save_error_image(img_tensor, gt, pred, 'substitution', sub_dir, f"{i}_{idx}")
-                if ins > 0:
-                    save_error_image(img_tensor, gt, pred, 'insertion', ins_dir, f"{i}_{idx}")
-                if dels > 0:
-                    save_error_image(img_tensor, gt, pred, 'deletion', del_dir, f"{i}_{idx}")
+            for gt_char, pred_char in zip(gt_upper, pred_upper):
+                if gt_char.isalnum() and gt_char in char_total:
+                    char_total[gt_char] += 1
+                    if gt_char == pred_char:
+                        char_correct[gt_char] += 1
 
-            if len(gt) == 0 or len(pred) == 0:
+            if len(gt_upper) == 0 or len(pred_upper) == 0:
                 norm_ED += 0
-            elif len(gt) > len(pred):
-                norm_ED += 1 - edit_distance(pred, gt) / len(gt)
+            elif len(gt_upper) > len(pred_upper):
+                norm_ED += 1 - edit_distance(pred_upper, gt_upper) / len(gt_upper)
             else:
-                norm_ED += 1 - edit_distance(pred, gt) / len(pred)
+                norm_ED += 1 - edit_distance(pred_upper, gt_upper) / len(pred_upper)
+
+            try:
+                confidence_score = pred_max_prob.cumprod(dim=0)[-1]
+            except:
+                confidence_score = 0
+            confidence_score_list.append(confidence_score)
+
+    if mispredicted_images:
+        mispredicted_dir = f'./result/{opt.exp_name}/mispredicted'
+        os.makedirs(mispredicted_dir, exist_ok=True)
+        error_categories = {
+            "Substitusi karakter": [],
+            "Karakter hilang": [],
+            "Karakter tambahan": [],
+            "Kesalahan format": [],
+            "Tidak diklasifikasikan": []
+        }
+
+        for idx, (img, title, error_type) in enumerate(mispredicted_images):
+            plt.figure(figsize=(5, 2))
+            img_np = img.numpy().transpose(1, 2, 0)
+            if img_np.shape[2] == 1:  # Grayscale
+                img_np = img_np.squeeze(2)
+                plt.imshow(img_np, cmap='gray')
+            else:
+                plt.imshow(img_np)
+            # Tampilkan hanya "Ground Truth: ... | Predicted: ..." di gambar
+            plt.title(title.split('_', 1)[1])
+            plt.axis('off')
+            safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
+            image_path = f'{mispredicted_dir}/{safe_title}.png'
+            plt.savefig(image_path, bbox_inches='tight')
+            plt.close()
+            error_categories[error_type].append(image_path)
+
+        for category, image_paths in error_categories.items():
+            if image_paths:
+                safe_category = re.sub(r'[<>:"/\\|?*]', '_', category)
+                zip_path = f'./result/{opt.exp_name}/{safe_category}.zip'
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for image_path in image_paths:
+                        zipf.write(image_path, os.path.basename(image_path))
+                for image_path in image_paths:
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
 
     accuracy = n_correct / float(length_of_data) * 100
     norm_ED = norm_ED / float(length_of_data)
 
-    print(f"Total Substitution Errors: {total_substitutions}")
-    print(f"Total Insertion Errors: {total_insertions}")
-    print(f"Total Deletion Errors: {total_deletions}")
-
-    with open(f'./result/{opt.exp_name}/error_stats.txt', 'a') as f:
-        f.write(f"Total Substitution Errors: {total_substitutions}\n")
-        f.write(f"Total Insertion Errors: {total_insertions}\n")
-        f.write(f"Total Deletion Errors: {total_deletions}\n")
-
-    return valid_loss_avg.val(), accuracy, norm_ED, preds_str, [], labels, infer_time, length_of_data
+    char_stats = {'total': char_total, 'correct': char_correct}
+    return valid_loss_avg.val(), accuracy, norm_ED, preds_str, confidence_score_list, labels, infer_time, length_of_data, char_stats
 
 def test(opt):
-    """ model configuration """
     if 'CTC' in opt.Prediction:
         converter = CTCLabelConverter(opt.character)
     else:
@@ -184,7 +267,7 @@ def test(opt):
     model = torch.nn.DataParallel(model).to(device)
 
     print('loading pretrained model from %s' % opt.saved_model)
-    model.load_state_dict(torch.load(opt.saved_model, map_location=device))
+    model.load_state_dict(torch.load(opt.saved_model, map_location=device, weights_only=True))
     opt.exp_name = '_'.join(opt.saved_model.split('/')[1:])
 
     os.makedirs(f'./result/{opt.exp_name}', exist_ok=True)
@@ -208,11 +291,20 @@ def test(opt):
                 shuffle=False,
                 num_workers=int(opt.workers),
                 collate_fn=AlignCollate_evaluation, pin_memory=True)
-            _, accuracy_by_best_model, _, _, _, _, _, _ = validation(
-                model, criterion, evaluation_loader, converter, opt)
+            _, accuracy_by_best_model, _, _, _, _, _, _, char_stats = validation(
+                model, criterion, evaluation_loader, converter, opt, eval_data)
+            
+            char_accuracy = {}
+            for char in char_stats['total']:
+                if char_stats['total'][char] > 0:
+                    char_accuracy[char] = char_stats['correct'][char] / char_stats['total'][char] * 100
+            
             log.write(eval_data_log)
-            print(f'{accuracy_by_best_model:0.3f}')
             log.write(f'{accuracy_by_best_model:0.3f}\n')
+            log.write('Per-character accuracy:\n')
+            for char in sorted(char_accuracy.keys()):
+                log.write(f'{char}: {char_accuracy[char]:0.2f}% ({char_stats["correct"][char]}/{char_stats["total"][char]})\n')
+            print(f'{accuracy_by_best_model:0.3f}')
             log.close()
 
 if __name__ == '__main__':
