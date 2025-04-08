@@ -26,7 +26,7 @@ def compute_error_types(gt, pred):
     deletion_count = len([op for op in ops if op[0] == 'delete'])
     return substitution_count, insertion_count, deletion_count
 
-# Fungsi untuk menyimpan gambar dengan anotasi
+# Fungsi untuk menyimpan gambar dengan anotasi seperti contoh
 def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     output_dir = f'./result/{opt.exp_name}/{error_type}'
     os.makedirs(output_dir, exist_ok=True)
@@ -36,19 +36,34 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     img = img.astype(np.uint8)
     img_pil = Image.fromarray(img).convert('RGB')
     
-    # Tambahkan teks ground truth dan predicted
-    draw = ImageDraw.Draw(img_pil)
+    # Dapatkan ukuran gambar asli
+    img_width, img_height = img_pil.size
+    
+    # Buat gambar baru dengan ruang tambahan di atas untuk teks
+    text_height = 40  # Tinggi area teks
+    new_height = img_height + text_height
+    new_img = Image.new('RGB', (img_width, new_height), color=(0, 0, 0))  # Latar belakang hitam
+    
+    # Tempelkan gambar asli di bagian bawah
+    new_img.paste(img_pil, (0, text_height))
+    
+    # Tambahkan teks "Ground Truth: ... | Predicted: ..."
+    draw = ImageDraw.Draw(new_img)
     try:
         font = ImageFont.truetype("arial.ttf", 15)
     except:
         font = ImageFont.load_default()  # Gunakan font default jika arial.ttf tidak ada
     
-    draw.text((5, 5), f"GT: {gt}", font=font, fill=(255, 0, 0))  # Ground truth dalam warna merah
-    draw.text((5, 25), f"Pred: {pred}", font=font, fill=(0, 255, 0))  # Predicted dalam warna hijau
+    text = f"Ground Truth: {gt} | Predicted: {pred}"
+    text_width = draw.textlength(text, font=font)
+    text_x = (img_width - text_width) // 2  # Posisi teks di tengah
+    text_y = 10  # Posisi teks di area atas
+    
+    draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))  # Teks putih
     
     # Simpan gambar
     img_path = os.path.join(output_dir, f"{idx}_{gt}_to_{pred}.png")
-    img_pil.save(img_path)
+    new_img.save(img_path)
 
 def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=False):
     eval_data_list = ['IIIT5k_3000', 'SVT', 'IC03_860', 'IC03_867', 'IC13_857',
