@@ -26,7 +26,7 @@ def compute_error_types(gt, pred):
     deletion_count = len([op for op in ops if op[0] == 'delete'])
     return substitution_count, insertion_count, deletion_count
 
-# Fungsi untuk menyimpan gambar dengan anotasi seperti contoh
+# Fungsi untuk menyimpan gambar dengan anotasi
 def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     output_dir = f'./result/{opt.exp_name}/{error_type}'
     os.makedirs(output_dir, exist_ok=True)
@@ -39,27 +39,47 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     # Dapatkan ukuran gambar asli
     img_width, img_height = img_pil.size
     
+    # Buat teks anotasi
+    text = f"Ground Truth: {gt} | Predicted: {pred}"
+    
+    # Tentukan font (Times New Roman)
+    font_size = 15
+    try:
+        font = ImageFont.truetype("times.ttf", font_size)  # Times New Roman
+    except:
+        font = ImageFont.load_default()  # Gunakan font default jika Times New Roman tidak ada
+    
+    # Hitung ukuran teks untuk memastikan tidak terpotong
+    draw_temp = ImageDraw.Draw(img_pil)
+    text_bbox = draw_temp.textbbox((0, 0), text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    
+    # Jika teks terlalu lebar, kurangi ukuran font hingga muat
+    while text_width > img_width and font_size > 8:
+        font_size -= 1
+        font = ImageFont.truetype("times.ttf", font_size)
+        text_bbox = draw_temp.textbbox((0, 0), text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+    
+    # Tambahkan padding untuk area teks
+    padding = 10
+    text_area_height = text_height + 2 * padding
+    
     # Buat gambar baru dengan ruang tambahan di atas untuk teks
-    text_height = 40  # Tinggi area teks
-    new_height = img_height + text_height
-    new_img = Image.new('RGB', (img_width, new_height), color=(0, 0, 0))  # Latar belakang hitam
+    new_height = img_height + text_area_height
+    new_img = Image.new('RGB', (img_width, new_height), color=(255, 255, 255))  # Latar belakang putih
     
     # Tempelkan gambar asli di bagian bawah
-    new_img.paste(img_pil, (0, text_height))
+    new_img.paste(img_pil, (0, text_area_height))
     
     # Tambahkan teks "Ground Truth: ... | Predicted: ..."
     draw = ImageDraw.Draw(new_img)
-    try:
-        font = ImageFont.truetype("arial.ttf", 15)
-    except:
-        font = ImageFont.load_default()  # Gunakan font default jika arial.ttf tidak ada
-    
-    text = f"Ground Truth: {gt} | Predicted: {pred}"
-    text_width = draw.textlength(text, font=font)
     text_x = (img_width - text_width) // 2  # Posisi teks di tengah
-    text_y = 10  # Posisi teks di area atas
+    text_y = padding  # Posisi teks di area atas
     
-    draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255))  # Teks putih
+    draw.text((text_x, text_y), text, font=font, fill=(0, 0, 0))  # Teks hitam
     
     # Simpan gambar
     img_path = os.path.join(output_dir, f"{idx}_{gt}_to_{pred}.png")
