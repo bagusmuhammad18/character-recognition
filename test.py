@@ -39,6 +39,10 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     # Dapatkan ukuran gambar asli
     img_width, img_height = img_pil.size
     
+    # Ubah ground truth dan predicted menjadi huruf kapital
+    gt = gt.upper()
+    pred = pred.upper()
+    
     # Buat teks anotasi
     text = f"Ground Truth: {gt} | Predicted: {pred}"
     
@@ -69,8 +73,11 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
     
+    # Tentukan lebar minimum untuk gambar baru agar teks muat
+    min_width = max(img_width, text_width + 40)  # Tambahkan padding 20 piksel di setiap sisi teks
+    
     # Jika teks terlalu lebar, kurangi ukuran font hingga muat
-    while text_width > img_width and font_size > 8:
+    while text_width > min_width - 40 and font_size > 8:
         font_size -= 1
         for font_path in font_paths:
             try:
@@ -88,16 +95,18 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     padding = 10
     text_area_height = text_height + 2 * padding
     
-    # Buat gambar baru dengan ruang tambahan di atas untuk teks
+    # Buat gambar baru dengan lebar yang cukup dan ruang tambahan di atas untuk teks
+    new_width = min_width
     new_height = img_height + text_area_height
-    new_img = Image.new('RGB', (img_width, new_height), color=(255, 255, 255))  # Latar belakang putih
+    new_img = Image.new('RGB', (new_width, new_height), color=(255, 255, 255))  # Latar belakang putih
     
-    # Tempelkan gambar asli di bagian bawah
-    new_img.paste(img_pil, (0, text_area_height))
+    # Tempelkan gambar asli di bagian bawah, di tengah
+    img_x = (new_width - img_width) // 2  # Posisi gambar di tengah
+    new_img.paste(img_pil, (img_x, text_area_height))
     
     # Tambahkan teks "Ground Truth: ... | Predicted: ..."
     draw = ImageDraw.Draw(new_img)
-    text_x = (img_width - text_width) // 2  # Posisi teks di tengah
+    text_x = (new_width - text_width) // 2  # Posisi teks di tengah
     text_y = padding  # Posisi teks di area atas
     
     draw.text((text_x, text_y), text, font=font, fill=(0, 0, 0))  # Teks hitam
