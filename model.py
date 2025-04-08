@@ -80,7 +80,7 @@ class Model(nn.Module):
 
         # Simpan hasil grayscale (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
-            img_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
+            img_to_save = processed[0].squeeze().detach().cpu().numpy()  # Detach sebelum konversi ke numpy
             plt.imsave(f'grayscale/grayscale_{self.image_counter:03d}.png', img_to_save, cmap='gray')
 
         """ Preprocessing stage: Binarisasi dengan Adaptive Thresholding berbasis Local Mean """
@@ -92,7 +92,7 @@ class Model(nn.Module):
 
         # Simpan hasil thresholding (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
-            img_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
+            img_to_save = processed[0].squeeze().detach().cpu().numpy()  # Detach sebelum konversi ke numpy
             plt.imsave(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save, cmap='gray')
 
         """ Operasi Morfologi: Opening untuk Pengenalan Karakter Plat Nomor """
@@ -103,7 +103,7 @@ class Model(nn.Module):
 
         # Simpan hasil operasi morfologi (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
-            img_morph_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
+            img_morph_to_save = processed[0].squeeze().detach().cpu().numpy()  # Detach sebelum konversi ke numpy
             plt.imsave(f'morphology/morphology_{self.image_counter:03d}.png', img_morph_to_save, cmap='gray')
             self.image_counter += 1  # Increment counter setelah menyimpan semua gambar
 
