@@ -309,6 +309,14 @@ def validation(model, criterion, evaluation_loader, converter, opt):
         else:
             char_accuracy_dict[char] = 0.0
 
+    # Buat char_stats sebagai dictionary yang berisi informasi akurasi per karakter
+    char_stats = {
+        'char_accuracy': char_accuracy,  # Akurasi per karakter keseluruhan
+        'char_accuracy_dict': char_accuracy_dict,  # Akurasi per karakter
+        'char_counts': char_counts,  # Jumlah kemunculan setiap karakter
+        'char_correct': char_correct  # Jumlah prediksi benar untuk setiap karakter
+    }
+
     # Cetak akurasi per karakter
     print(f"\nCharacter-Level Accuracy: {char_accuracy:.2f}%")
     print("Accuracy per Character:")
@@ -330,7 +338,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
         for char, acc in sorted(char_accuracy_dict.items()):
             f.write(f"Character '{char}': {acc:.2f}% (Correct: {char_correct[char]}/{char_counts[char]})\n")
 
-    return valid_loss_avg.val(), accuracy, norm_ED, preds_str, confidence_score_list, labels, infer_time, length_of_data
+    return valid_loss_avg.val(), accuracy, norm_ED, preds_str, confidence_score_list, labels, infer_time, length_of_data, char_stats
 
 def test(opt):
     if 'CTC' in opt.Prediction:
