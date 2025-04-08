@@ -4,7 +4,7 @@ import torch.nn.functional as F  # Untuk operasi pooling
 import matplotlib.pyplot as plt
 import cv2  # Pastikan OpenCV terinstal: pip install opencv-python
 import os  # Untuk os.makedirs dan os.path
-import zipfile  # Untuk membuat file zip
+import shutil  # Untuk membuat file zip
 from modules.transformation import TPS_SpatialTransformerNetwork
 from modules.feature_extraction import VGG_FeatureExtractor, RCNN_FeatureExtractor, ResNet_FeatureExtractor
 from modules.sequence_modeling import BidirectionalLSTM
@@ -19,7 +19,7 @@ class Model(nn.Module):
                        'Seq': opt.SequenceModeling, 'Pred': opt.Prediction}
         self.image_counter = 0  # Counter untuk menyimpan gambar
 
-        # Buat folder untuk menyimpan gambar hasil preprocessing
+        # Buat folder untuk menyimpan hasil preprocessing
         os.makedirs('grayscale', exist_ok=True)
         os.makedirs('threshold', exist_ok=True)
         os.makedirs('morphology', exist_ok=True)
@@ -80,7 +80,7 @@ class Model(nn.Module):
 
         # Simpan hasil grayscale (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
-            img_to_save = processed[0].squeeze().detach().cpu().numpy()  # Detach sebelum konversi ke numpy
+            img_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
             plt.imsave(f'grayscale/grayscale_{self.image_counter:03d}.png', img_to_save, cmap='gray')
 
         """ Preprocessing stage: Binarisasi dengan Adaptive Thresholding berbasis Local Mean """
@@ -92,7 +92,7 @@ class Model(nn.Module):
 
         # Simpan hasil thresholding (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
-            img_to_save = processed[0].squeeze().detach().cpu().numpy()  # Detach sebelum konversi ke numpy
+            img_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
             plt.imsave(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save, cmap='gray')
 
         """ Operasi Morfologi: Opening untuk Pengenalan Karakter Plat Nomor """
@@ -103,7 +103,7 @@ class Model(nn.Module):
 
         # Simpan hasil operasi morfologi (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
-            img_morph_to_save = processed[0].squeeze().detach().cpu().numpy()  # Detach sebelum konversi ke numpy
+            img_morph_to_save = processed[0].squeeze().cpu().numpy()  # Ambil gambar pertama dari batch
             plt.imsave(f'morphology/morphology_{self.image_counter:03d}.png', img_morph_to_save, cmap='gray')
             self.image_counter += 1  # Increment counter setelah menyimpan semua gambar
 
@@ -129,29 +129,12 @@ class Model(nn.Module):
                 batch_max_length=self.opt.batch_max_length
             )
 
+        # Zip folder setelah semua gambar disimpan (hanya dilakukan sekali setelah semua batch selesai)
+        if self.image_counter >= 100:  # Hanya zip jika sudah mencapai batas maksimal gambar
+            for folder in ['grayscale', 'threshold', 'morphology']:
+                zip_name = f"{folder}.zip"
+                if not os.path.exists(zip_name):  # Cek apakah file zip sudah ada
+                    shutil.make_archive(folder, 'zip', folder)
+                    print(f"Created {zip_name}")
+
         return prediction
-
-    def zip_preprocessed_images(self):
-        """ Fungsi untuk mengemas gambar-gambar preprocessing ke dalam file zip """
-        # Zip folder grayscale
-        with zipfile.ZipFile('grayscale_images.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, _, files in os.walk('grayscale'):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    zipf.write(file_path, os.path.join('grayscale', file))
-
-        # Zip folder threshold
-        with zipfile.ZipFile('threshold_images.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, _, files in os.walk('threshold'):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    zipf.write(file_path, os.path.join('threshold', file))
-
-        # Zip folder morphology
-        with zipfile.ZipFile('morphology_images.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, _, files in os.walk('morphology'):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    zipf.write(file_path, os.path.join('morphology', file))
-
-        print("Preprocessing images have been zipped into 'grayscale_images.zip', 'threshold_images.zip', and 'morphology_images.zip'")
