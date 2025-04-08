@@ -42,12 +42,26 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     # Buat teks anotasi
     text = f"Ground Truth: {gt} | Predicted: {pred}"
     
-    # Tentukan font (Times New Roman)
+    # Tentukan font (coba Times New Roman, lalu fallback ke font lain)
     font_size = 15
-    try:
-        font = ImageFont.truetype("times.ttf", font_size)  # Times New Roman
-    except:
-        font = ImageFont.load_default()  # Gunakan font default jika Times New Roman tidak ada
+    font = None
+    font_paths = [
+        "times.ttf",  # Times New Roman
+        "arial.ttf",  # Arial sebagai fallback
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Font default di banyak sistem Linux
+    ]
+    
+    for font_path in font_paths:
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+            print(f"Using font: {font_path}")
+            break
+        except:
+            continue
+    
+    if font is None:
+        print("Warning: Could not find any specified fonts. Using default font.")
+        font = ImageFont.load_default()  # Gunakan font default jika semua font gagal
     
     # Hitung ukuran teks untuk memastikan tidak terpotong
     draw_temp = ImageDraw.Draw(img_pil)
@@ -58,7 +72,14 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     # Jika teks terlalu lebar, kurangi ukuran font hingga muat
     while text_width > img_width and font_size > 8:
         font_size -= 1
-        font = ImageFont.truetype("times.ttf", font_size)
+        for font_path in font_paths:
+            try:
+                font = ImageFont.truetype(font_path, font_size)
+                break
+            except:
+                continue
+        if font is None:
+            font = ImageFont.load_default()
         text_bbox = draw_temp.textbbox((0, 0), text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
@@ -265,7 +286,8 @@ def test(opt):
     model = torch.nn.DataParallel(model).to(device)
 
     print('loading pretrained model from %s' % opt.saved_model)
-    model.load_state_dict(torch.load(opt.saved_model, map_location=device))
+    # Tambahkan weights_only=True untuk keamanan
+    model.load_state_dict(torch.load(opt.saved_model, map_location=device, weights_only=True))
     opt.exp_name = '_'.join(opt.saved_model.split('/')[1:])
 
     os.makedirs(f'./result/{opt.exp_name}', exist_ok=True)
