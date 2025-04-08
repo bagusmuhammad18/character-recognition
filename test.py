@@ -181,6 +181,12 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     total_insertion = 0
     total_deletion = 0
 
+    # Variabel untuk menghitung akurasi per karakter
+    total_chars = 0  # Total karakter di semua ground truth
+    correct_chars = 0  # Jumlah karakter yang benar
+    char_counts = {}  # Menyimpan jumlah kemunculan setiap karakter
+    char_correct = {}  # Menyimpan jumlah prediksi benar untuk setiap karakter
+
     for i, (image_tensors, labels) in enumerate(evaluation_loader):
         batch_size = image_tensors.size(0)
         length_of_data += batch_size
@@ -233,6 +239,29 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 pred = re.sub(out_of_alphanumeric_case_insensitve, '', pred)
                 gt = re.sub(out_of_alphanumeric_case_insensitve, '', gt)
 
+            # Hitung akurasi per karakter
+            gt = gt.upper()  # Ubah ke huruf kapital untuk konsistensi
+            pred = pred.upper()
+
+            # Inisialisasi jumlah kemunculan dan prediksi benar untuk setiap karakter di gt
+            for char in gt:
+                if char not in char_counts:
+                    char_counts[char] = 0
+                    char_correct[char] = 0
+                char_counts[char] += 1
+
+            # Bandingkan karakter per karakter
+            min_len = min(len(gt), len(pred))
+            total_chars += len(gt)
+            for k in range(min_len):
+                if gt[k] == pred[k]:
+                    correct_chars += 1
+                    char_correct[gt[k]] += 1
+            # Jika pred lebih pendek dari gt, karakter yang hilang dianggap salah
+            if len(pred) < len(gt):
+                pass  # Karakter yang hilang sudah dihitung dalam total_chars
+            # Jika pred lebih panjang dari gt, karakter tambahan diabaikan
+
             if pred == gt:
                 n_correct += 1
             else:
@@ -266,8 +295,28 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     accuracy = n_correct / float(length_of_data) * 100
     norm_ED = norm_ED / float(length_of_data)
 
+    # Hitung akurasi per karakter secara keseluruhan
+    if total_chars > 0:
+        char_accuracy = (correct_chars / total_chars) * 100
+    else:
+        char_accuracy = 0.0
+
+    # Hitung akurasi per karakter untuk setiap karakter
+    char_accuracy_dict = {}
+    for char in char_counts:
+        if char_counts[char] > 0:
+            char_accuracy_dict[char] = (char_correct[char] / char_counts[char]) * 100
+        else:
+            char_accuracy_dict[char] = 0.0
+
+    # Cetak akurasi per karakter
+    print(f"\nCharacter-Level Accuracy: {char_accuracy:.2f}%")
+    print("Accuracy per Character:")
+    for char, acc in sorted(char_accuracy_dict.items()):
+        print(f"Character '{char}': {acc:.2f}% (Correct: {char_correct[char]}/{char_counts[char]})")
+
     # Cetak jumlah kesalahan
-    print(f"Total Substitution Errors: {total_substitution}")
+    print(f"\nTotal Substitution Errors: {total_substitution}")
     print(f"Total Insertion Errors: {total_insertion}")
     print(f"Total Deletion Errors: {total_deletion}")
 
@@ -276,6 +325,10 @@ def validation(model, criterion, evaluation_loader, converter, opt):
         f.write(f"Total Substitution Errors: {total_substitution}\n")
         f.write(f"Total Insertion Errors: {total_insertion}\n")
         f.write(f"Total Deletion Errors: {total_deletion}\n")
+        f.write(f"\nCharacter-Level Accuracy: {char_accuracy:.2f}%\n")
+        f.write("Accuracy per Character:\n")
+        for char, acc in sorted(char_accuracy_dict.items()):
+            f.write(f"Character '{char}': {acc:.2f}% (Correct: {char_correct[char]}/{char_counts[char]})\n")
 
     return valid_loss_avg.val(), accuracy, norm_ED, preds_str, confidence_score_list, labels, infer_time, length_of_data
 
