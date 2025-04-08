@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import cv2  # Pastikan OpenCV terinstal: pip install opencv-python
 import os  # Untuk os.makedirs dan os.path
 import shutil  # Untuk membuat file zip
+import numpy as np  # Untuk normalisasi
 from modules.transformation import TPS_SpatialTransformerNetwork
 from modules.feature_extraction import VGG_FeatureExtractor, RCNN_FeatureExtractor, ResNet_FeatureExtractor
 from modules.sequence_modeling import BidirectionalLSTM
@@ -81,7 +82,11 @@ class Model(nn.Module):
         # Simpan hasil grayscale (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
             img_to_save = processed[0].squeeze().detach().cpu().numpy()  # Ambil gambar pertama dari batch
-            plt.imsave(f'grayscale/grayscale_{self.image_counter:03d}.png', img_to_save, cmap='gray')
+            # Normalisasi ke rentang 0-255
+            img_to_save = (img_to_save - img_to_save.min()) / (img_to_save.max() - img_to_save.min())  # Normalisasi ke 0-1
+            img_to_save = (img_to_save * 255).astype(np.uint8)  # Skala ke 0-255 dan ubah ke uint8
+            # Simpan menggunakan cv2.imwrite
+            cv2.imwrite(f'grayscale/grayscale_{self.image_counter:03d}.png', img_to_save)
 
         """ Preprocessing stage: Binarisasi dengan Adaptive Thresholding berbasis Local Mean """
         kernel_size = 15  # Ukuran kernel untuk menghitung rata-rata lokal, bisa disesuaikan
@@ -93,7 +98,10 @@ class Model(nn.Module):
         # Simpan hasil thresholding (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
             img_to_save = processed[0].squeeze().detach().cpu().numpy()  # Ambil gambar pertama dari batch
-            plt.imsave(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save, cmap='gray')
+            # Normalisasi ke rentang 0-255
+            img_to_save = (img_to_save * 255).astype(np.uint8)  # Binarisasi menghasilkan 0 atau 1, skala ke 0 atau 255
+            # Simpan menggunakan cv2.imwrite
+            cv2.imwrite(f'threshold/threshold_{self.image_counter:03d}.png', img_to_save)
 
         """ Operasi Morfologi: Opening untuk Pengenalan Karakter Plat Nomor """
         # Erosi: Menggunakan max pooling pada inversi gambar untuk mengecilkan area putih
@@ -104,7 +112,10 @@ class Model(nn.Module):
         # Simpan hasil operasi morfologi (hanya batch pertama untuk efisiensi)
         if self.image_counter < 100:  # Batasi penyimpanan maksimal 100 gambar
             img_morph_to_save = processed[0].squeeze().detach().cpu().numpy()  # Ambil gambar pertama dari batch
-            plt.imsave(f'morphology/morphology_{self.image_counter:03d}.png', img_morph_to_save, cmap='gray')
+            # Normalisasi ke rentang 0-255
+            img_morph_to_save = (img_morph_to_save * 255).astype(np.uint8)  # Binarisasi menghasilkan 0 atau 1, skala ke 0 atau 255
+            # Simpan menggunakan cv2.imwrite
+            cv2.imwrite(f'morphology/morphology_{self.image_counter:03d}.png', img_morph_to_save)
             self.image_counter += 1  # Increment counter setelah menyimpan semua gambar
 
         """ Feature extraction stage """
