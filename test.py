@@ -326,18 +326,22 @@ def validation(model, criterion, evaluation_loader, converter, opt):
         'char_correct': char_correct  # Jumlah prediksi benar untuk setiap karakter
     }
 
+    # Bagian cetak akurasi per karakter dikomentari
+    """
     # Cetak akurasi per karakter
     print(f"\nCharacter-Level Accuracy: {char_accuracy:.2f}%")
     print("Accuracy per Character:")
     for char, acc in sorted(char_accuracy_dict.items()):
         print(f"Character '{char}': {acc:.2f}% (Correct: {char_correct[char]}/{char_counts[char]})")
+    """
 
     # Cetak jumlah kesalahan
     print(f"\nTotal Substitution Errors: {total_substitution}")
     print(f"Total Insertion Errors: {total_insertion}")
     print(f"Total Deletion Errors: {total_deletion}")
 
-    # Tulis ke log file
+    # Tulis ke log file, pastikan direktori ada
+    os.makedirs(f'./result/{opt.exp_name}', exist_ok=True)
     with open(f'./result/{opt.exp_name}/error_counts.txt', 'a') as f:
         f.write(f"Total Substitution Errors: {total_substitution}\n")
         f.write(f"Total Insertion Errors: {total_insertion}\n")
