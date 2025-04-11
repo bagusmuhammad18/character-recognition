@@ -46,6 +46,8 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     # Buat teks anotasi
     text = f"Ground Truth: {gt} | Predicted: {pred}"
     
+    # Bagian font dikomentari karena tidak digunakan
+    """
     # Tentukan font (coba Times New Roman, lalu fallback ke font lain)
     font_size = 15
     font = None
@@ -110,10 +112,14 @@ def save_image_with_annotation(image, gt, pred, error_type, opt, idx):
     text_y = padding  # Posisi teks di area atas
     
     draw.text((text_x, text_y), text, font=font, fill=(0, 0, 0))  # Teks hitam
+    """
     
+    # Bagian penyimpanan gambar dikomentari
+    """
     # Simpan gambar
     img_path = os.path.join(output_dir, f"{idx}_{gt}_to_{pred}.png")
     new_img.save(img_path)
+    """
 
 def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=False):
     eval_data_list = ['IIIT5k_3000', 'SVT', 'IC03_860', 'IC03_867', 'IC13_857',
@@ -271,6 +277,8 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 total_insertion += ins
                 total_deletion += dele
 
+                # Bagian penyimpanan gambar dikomentari
+                """
                 # Simpan gambar berdasarkan jenis kesalahan
                 if sub > 0:
                     save_image_with_annotation(image_tensors[j], gt, pred, "substitution", opt, i * batch_size + j)
@@ -278,6 +286,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                     save_image_with_annotation(image_tensors[j], gt, pred, "insertion", opt, i * batch_size + j)
                 if dele > 0:
                     save_image_with_annotation(image_tensors[j], gt, pred, "deletion", opt, i * batch_size + j)
+                """
 
             if len(gt) == 0 or len(pred) == 0:
                 norm_ED += 0
